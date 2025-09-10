@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  username           String              @unique @db.VarChar(50)
+  email              String              @unique @db.VarChar(100)
+  passwordHash       String?             @map("password_hash") @db.VarChar(255)
+  accountType        AccountType         @default(FREE) @map("account_type")
+  googleId           String?             @unique @map("google_id") @db.VarChar(100)
+  avatarUrl          String?             @map("avatar_url") @db.VarChar(500)
+  bio                String?             @db.Text
+  isVerified         Boolean             @default(false) @map("is_verified")
+  isActive           Boolean             @default(true) @map("is_active")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  lastLogin          DateTime?           @map("last_login")
+  socialLinks        String?             @map("social_links") @db.LongText
+  role               UserRole            @default(USER)
+  bannerUrl          String?             @map("banner_url") @db.VarChar(500)
+  country            String?             @db.VarChar(100)
+  city               String?             @db.VarChar(100)
+  resetToken         String?             @map("reset_token") @db.VarChar(255)
+  resetTokenExpiry   DateTime?           @map("reset_token_expiry")
+  adminLogs          AdminLog[]
+  downloads          AssetDownload[]
+  reviews            AssetReview[]
+  assets             Asset[]
+  refreshTokens      RefreshToken[]
+  reviewedRequests   UserAccessRequest[] @relation("ReviewedBy")
+  commentLikes       UserCommentLike[]
+  authoredComments   UserComment[]       @relation("AuthoredComments")
+  profileComments    UserComment[]       @relation("ProfileComments")
+  favorites          UserFavorite[]
+  grantedPermissions UserPermission[]    @relation("GrantedBy")
+  permissions        UserPermission[]
+
+  @@index([email])
+  @@index([username])
+  @@index([accountType])
+  @@index([role])
+  @@index([googleId])
+  @@index([resetToken])
+  @@map("users")
+}
+
+model AssetCategory {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  description String?  @db.Text
+  icon        String?  @db.VarChar(100)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  assets      Asset[]
+
+  @@map("asset_categories")
+}
+
+model Asset {
+  id             Int             @id @default(autoincrement())
+  title          String          @db.VarChar(200)
+  description    String?         @db.Text
+  categoryId     Int             @map("category_id")
+  userId         Int             @map("user_id")
+  fileName       String          @map("file_name") @db.VarChar(255)
+  fileSize       BigInt          @map("file_size")
+  fileType       String          @map("file_type") @db.VarChar(50)
+  googleDriveId  String          @map("google_drive_id") @db.VarChar(500)
+  googleDriveUrl String          @map("google_drive_url") @db.VarChar(1000)
+  thumbnailUrl   String?         @map("thumbnail_url") @db.VarChar(1000)
+  downloadCount  Int             @default(0) @map("download_count")
+  isApproved     Boolean         @default(false) @map("is_approved")
+  isActive       Boolean         @default(true) @map("is_active")
+  tags           String?         @db.LongText
+  metadata       String?         @db.LongText
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  imageUrls      String?         @map("image_urls") @db.LongText
+  externalUrl    String?         @map("external_url") @db.VarChar(1000)
+  downloads      AssetDownload[]
+  reviews        AssetReview[]
+  category       AssetCategory   @relation(fields: [categoryId], references: [id])
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  favorites      UserFavorite[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([isApproved])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([downloadCount])
+  @@index([title, categoryId, isApproved, isActive])
+  @@index([categoryId, isApproved, isActive, createdAt])
+  @@index([categoryId, isApproved, isActive, downloadCount])
+  @@fulltext([title, description])
+  @@map("assets")
+}
+
+model AssetDownload {
+  id           Int      @id @default(autoincrement())
+  assetId      Int      @map("asset_id")
+  userId       Int?     @map("user_id")
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  userAgent    String?  @map("user_agent") @db.Text
+  downloadedAt DateTime @default(now()) @map("downloaded_at")
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user         User?    @relation(fields: [userId], references: [id])
+
+  @@index([assetId])
+  @@index([userId])
+  @@index([downloadedAt])
+  @@index([assetId, downloadedAt])
+  @@map("asset_downloads")
+}
+
+model UserFavorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  assetId   Int      @map("asset_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId], name: "unique_user_asset")
+  @@index([userId])
+  @@index([assetId])
+  @@map("user_favorites")
+}
+
+model AssetReview {
+  id         Int      @id @default(autoincrement())
+  assetId    Int      @map("asset_id")
+  userId     Int      @map("user_id")
+  rating     Int      @db.TinyInt
+  comment    String?  @db.Text
+  isApproved Boolean  @default(true) @map("is_approved")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId], name: "unique_user_asset_review")
+  @@index([assetId])
+  @@index([userId])
+  @@index([rating])
+  @@index([assetId, rating, isApproved])
+  @@map("asset_reviews")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AdminLog {
+  id         Int      @id @default(autoincrement())
+  adminId    Int      @map("admin_id")
+  action     String   @db.VarChar(100)
+  targetType String?  @map("target_type") @db.VarChar(50)
+  targetId   Int?     @map("target_id")
+  details    String?  @db.LongText
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at")
+  admin      User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_logs")
+}
+
+model UserAccessRequest {
+  id              Int                 @id @default(autoincrement())
+  name            String              @db.VarChar(100)
+  email           String              @unique @db.VarChar(100)
+  discord         String?             @db.VarChar(100)
+  passwordHash    String              @map("password_hash") @db.VarChar(255)
+  reason          String              @db.Text
+  status          AccessRequestStatus @default(PENDING)
+  reviewedBy      Int?                @map("reviewed_by")
+  reviewedAt      DateTime?           @map("reviewed_at")
+  rejectionReason String?             @map("rejection_reason") @db.Text
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  reviewer        User?               @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reviewedBy], map: "user_access_requests_reviewed_by_fkey")
+  @@map("user_access_requests")
+}
+
+model UserPermission {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  permission String   @db.VarChar(100)
+  grantedBy  Int?     @map("granted_by")
+  grantedAt  DateTime @default(now()) @map("granted_at")
+  granter    User?    @relation("GrantedBy", fields: [grantedBy], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission], name: "unique_user_permission")
+  @@index([userId])
+  @@index([permission])
+  @@index([grantedBy], map: "user_permissions_granted_by_fkey")
+  @@map("user_permissions")
+}
+
+model UserComment {
+  id            Int               @id @default(autoincrement())
+  profileUserId Int               @map("profile_user_id")
+  authorId      Int               @map("author_id")
+  parentId      Int?              @map("parent_id")
+  content       String            @db.Text
+  isVisible     Boolean           @default(true) @map("is_visible")
+  isApproved    Boolean           @default(true) @map("is_approved")
+  isPinned      Boolean           @default(false) @map("is_pinned")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  likes         UserCommentLike[]
+  author        User              @relation("AuthoredComments", fields: [authorId], references: [id], onDelete: Cascade)
+  parent        UserComment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       UserComment[]     @relation("CommentReplies")
+  profileUser   User              @relation("ProfileComments", fields: [profileUserId], references: [id], onDelete: Cascade)
+
+  @@index([profileUserId])
+  @@index([authorId])
+  @@index([parentId])
+  @@index([createdAt])
+  @@index([profileUserId, isVisible, isApproved])
+  @@map("user_comments")
+}
+
+model UserCommentLike {
+  id        Int         @id @default(autoincrement())
+  commentId Int         @map("comment_id")
+  userId    Int         @map("user_id")
+  createdAt DateTime    @default(now()) @map("created_at")
+  comment   UserComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId], name: "unique_comment_like")
+  @@index([commentId])
+  @@index([userId])
+  @@map("user_comment_likes")
+}
+
+model UserRegistration {
+  id                Int       @id @default(autoincrement())
+  nickname          String    @db.VarChar(100)
+  email             String    @unique @db.VarChar(100)
+  discord           String?   @db.VarChar(100)
+  passwordHash      String    @map("password_hash") @db.VarChar(255)
+  confirmationToken String    @unique @map("confirmation_token") @db.VarChar(255)
+  tokenExpiresAt    DateTime  @map("token_expires_at")
+  isConfirmed       Boolean   @default(false) @map("is_confirmed")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  confirmedAt       DateTime? @map("confirmed_at")
+
+  @@index([email])
+  @@index([confirmationToken])
+  @@index([createdAt])
+  @@map("user_registrations")
+}
+
+enum AccountType {
+  FREE    @map("free")
+  PREMIUM @map("premium")
+  ADMIN   @map("admin")
+
+  @@map("account_type")
+}
+
+enum UserRole {
+  SISTEMA   @map("SISTEMA")
+  ADMIN     @map("ADMIN")
+  MODERATOR @map("MODERATOR")
+  CREATOR   @map("CREATOR")
+  USER      @map("USER")
+
+  @@map("user_role")
+}
+
+enum AccessRequestStatus {
+  PENDING  @map("pending")
+  APPROVED @map("approved")
+  REJECTED @map("rejected")
+
+  @@map("access_request_status")
+}
