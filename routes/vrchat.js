@@ -848,4 +848,507 @@ router.get('/instances', async (req, res) => {
   }
 })
 
+/**
+ * @route GET /api/vrchat/worlds/search
+ * @desc Busca mundos por nome, tags, autor
+ * @access Private
+ */
+router.get('/worlds/search', async (req, res) => {
+  try {
+    const userId = req.user.id
+    const { q, tag, user, n = 60, offset = 0, sort = 'popularity', order = 'descending' } = req.query
+    
+    console.log('🔍 Buscando mundos:', { q, tag, user, n, offset, sort, order })
+    
+    // Busca conexão no banco
+    const connection = await vrchatService.getVRChatConnection(userId)
+    
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conta VRChat não conectada'
+      })
+    }
+
+    const authCookie = connection.authCookie
+    
+    if (!authCookie) {
+      // Fallback para dados mock de mundos populares
+      const mockWorlds = [
+        {
+          id: 'wrld_mock_search_1',
+          name: 'Mock Search World 1',
+          authorName: 'MockCreator',
+          authorId: 'usr_mock_1',
+          imageUrl: 'https://via.placeholder.com/512x288/1a1a1a/ffffff?text=Mock+World+1',
+          thumbnailImageUrl: 'https://via.placeholder.com/256x144/1a1a1a/ffffff?text=Mock+World+1',
+          description: 'Mundo de exemplo para demonstração da busca',
+          capacity: 16,
+          recommendedCapacity: 8,
+          favoriteCount: 1234,
+          visits: 50000,
+          popularity: 85,
+          heat: 92,
+          releaseStatus: 'public',
+          tags: ['game', 'social', 'exploration'],
+          created_at: new Date(Date.now() - 86400000 * 30).toISOString(),
+          updated_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+          publicationDate: new Date(Date.now() - 86400000 * 30).toISOString(),
+          platform: 'standalonewindows'
+        },
+        {
+          id: 'wrld_mock_search_2', 
+          name: 'Mock Creative Space',
+          authorName: 'AnotherCreator',
+          authorId: 'usr_mock_2',
+          imageUrl: 'https://via.placeholder.com/512x288/2a2a2a/ffffff?text=Creative+Space',
+          thumbnailImageUrl: 'https://via.placeholder.com/256x144/2a2a2a/ffffff?text=Creative+Space',
+          description: 'Espaço criativo para arte e socialização',
+          capacity: 20,
+          recommendedCapacity: 10,
+          favoriteCount: 2567,
+          visits: 125000,
+          popularity: 94,
+          heat: 88,
+          releaseStatus: 'public',
+          tags: ['art', 'creative', 'social'],
+          created_at: new Date(Date.now() - 86400000 * 60).toISOString(),
+          updated_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+          publicationDate: new Date(Date.now() - 86400000 * 60).toISOString(),
+          platform: 'standalonewindows'
+        }
+      ]
+      
+      return res.json({
+        success: true,
+        data: {
+          worlds: mockWorlds,
+          total: mockWorlds.length,
+          mock: true
+        },
+        message: 'Dados mock - cookie de autenticação necessário para busca real'
+      })
+    }
+
+    // Busca real na API VRChat
+    const searchResult = await vrchatService.searchWorlds(authCookie, { q, tag, user, n, offset, sort, order })
+    
+    if (!searchResult.success) {
+      console.log('❌ Falha ao buscar mundos:', searchResult.error)
+      return res.status(500).json({
+        success: false,
+        message: searchResult.error
+      })
+    }
+
+    console.log('✅ Mundos encontrados:', searchResult.worlds?.length || 0)
+
+    res.json({
+      success: true,
+      data: {
+        worlds: searchResult.worlds || [],
+        total: searchResult.total || 0,
+        mock: false
+      },
+      message: 'Mundos encontrados com sucesso'
+    })
+
+  } catch (error) {
+    console.error('❌ Error searching worlds:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar mundos'
+    })
+  }
+})
+
+/**
+ * @route GET /api/vrchat/worlds/featured
+ * @desc Busca mundos em destaque
+ * @access Private
+ */
+router.get('/worlds/featured', async (req, res) => {
+  try {
+    const userId = req.user.id
+    
+    console.log('⭐ Buscando mundos em destaque')
+    
+    // Busca conexão no banco
+    const connection = await vrchatService.getVRChatConnection(userId)
+    
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conta VRChat não conectada'
+      })
+    }
+
+    const authCookie = connection.authCookie
+    
+    if (!authCookie) {
+      // Fallback para dados mock de mundos em destaque
+      const mockFeaturedWorlds = [
+        {
+          id: 'wrld_featured_1',
+          name: 'Featured Adventure World',
+          authorName: 'VRChat Team',
+          authorId: 'usr_vrchat',
+          imageUrl: 'https://via.placeholder.com/512x288/3a3a3a/ffffff?text=Featured+World',
+          thumbnailImageUrl: 'https://via.placeholder.com/256x144/3a3a3a/ffffff?text=Featured+World',
+          description: 'Um mundo incrível em destaque pela equipe VRChat',
+          capacity: 24,
+          recommendedCapacity: 12,
+          favoriteCount: 15000,
+          visits: 500000,
+          popularity: 98,
+          heat: 97,
+          releaseStatus: 'public',
+          tags: ['featured', 'adventure', 'official'],
+          created_at: new Date(Date.now() - 86400000 * 14).toISOString(),
+          updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+          publicationDate: new Date(Date.now() - 86400000 * 14).toISOString(),
+          platform: 'standalonewindows',
+          featured: true
+        }
+      ]
+      
+      return res.json({
+        success: true,
+        data: {
+          worlds: mockFeaturedWorlds,
+          total: mockFeaturedWorlds.length,
+          mock: true
+        },
+        message: 'Dados mock - cookie de autenticação necessário para dados reais'
+      })
+    }
+
+    // Busca real na API VRChat
+    const featuredResult = await vrchatService.getFeaturedWorlds(authCookie)
+    
+    if (!featuredResult.success) {
+      console.log('❌ Falha ao buscar mundos em destaque:', featuredResult.error)
+      return res.status(500).json({
+        success: false,
+        message: featuredResult.error
+      })
+    }
+
+    console.log('✅ Mundos em destaque encontrados:', featuredResult.worlds?.length || 0)
+
+    res.json({
+      success: true,
+      data: {
+        worlds: featuredResult.worlds || [],
+        total: featuredResult.total || 0,
+        mock: false
+      },
+      message: 'Mundos em destaque encontrados com sucesso'
+    })
+
+  } catch (error) {
+    console.error('❌ Error getting featured worlds:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar mundos em destaque'
+    })
+  }
+})
+
+/**
+ * @route GET /api/vrchat/worlds/:worldId
+ * @desc Busca detalhes específicos de um mundo
+ * @access Private
+ */
+router.get('/worlds/:worldId', async (req, res) => {
+  try {
+    const userId = req.user.id
+    const { worldId } = req.params
+    
+    console.log('🌍 Buscando detalhes do mundo:', worldId)
+    
+    // Busca conexão no banco
+    const connection = await vrchatService.getVRChatConnection(userId)
+    
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conta VRChat não conectada'
+      })
+    }
+
+    const authCookie = connection.authCookie
+    
+    if (!authCookie) {
+      // Fallback para dados mock de mundo específico
+      const mockWorldDetails = {
+        id: worldId,
+        name: 'Mock World Details',
+        authorName: 'MockCreator',
+        authorId: 'usr_mock',
+        imageUrl: 'https://via.placeholder.com/512x288/4a4a4a/ffffff?text=World+Details',
+        thumbnailImageUrl: 'https://via.placeholder.com/256x144/4a4a4a/ffffff?text=World+Details',
+        description: 'Detalhes completos do mundo com informações mock para demonstração',
+        capacity: 16,
+        recommendedCapacity: 8,
+        favoriteCount: 3456,
+        visits: 89000,
+        popularity: 91,
+        heat: 85,
+        releaseStatus: 'public',
+        tags: ['social', 'game', 'exploration', 'hangout'],
+        created_at: new Date(Date.now() - 86400000 * 45).toISOString(),
+        updated_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+        publicationDate: new Date(Date.now() - 86400000 * 45).toISOString(),
+        platform: 'standalonewindows',
+        instances: [
+          {
+            id: '12345~region(us)~nonce(abc123)',
+            type: 'public',
+            region: 'us',
+            userCount: 8,
+            capacity: 16,
+            full: false,
+            canRequestInvite: true
+          },
+          {
+            id: '67890~region(eu)~nonce(def456)',
+            type: 'friends',
+            region: 'eu', 
+            userCount: 4,
+            capacity: 16,
+            full: false,
+            canRequestInvite: false
+          }
+        ]
+      }
+      
+      return res.json({
+        success: true,
+        data: {
+          world: mockWorldDetails,
+          mock: true
+        },
+        message: 'Dados mock - cookie de autenticação necessário para dados reais'
+      })
+    }
+
+    // Busca real na API VRChat
+    const worldResult = await vrchatService.getWorldDetails(authCookie, worldId)
+    
+    if (!worldResult.success) {
+      console.log('❌ Falha ao buscar detalhes do mundo:', worldResult.error)
+      return res.status(500).json({
+        success: false,
+        message: worldResult.error
+      })
+    }
+
+    console.log('✅ Detalhes do mundo encontrados:', worldResult.world?.name || 'Unknown')
+
+    res.json({
+      success: true,
+      data: {
+        world: worldResult.world,
+        mock: false
+      },
+      message: 'Detalhes do mundo encontrados com sucesso'
+    })
+
+  } catch (error) {
+    console.error('❌ Error getting world details:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar detalhes do mundo'
+    })
+  }
+})
+
+/**
+ * @route GET /api/vrchat/worlds/:worldId/instances
+ * @desc Busca instâncias ativas de um mundo específico
+ * @access Private
+ */
+router.get('/worlds/:worldId/instances', async (req, res) => {
+  try {
+    const userId = req.user.id
+    const { worldId } = req.params
+    
+    console.log('🌐 Buscando instâncias do mundo:', worldId)
+    
+    // Busca conexão no banco
+    const connection = await vrchatService.getVRChatConnection(userId)
+    
+    if (!connection) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conta VRChat não conectada'
+      })
+    }
+
+    const authCookie = connection.authCookie
+    
+    if (!authCookie) {
+      // Fallback para dados mock de instâncias
+      const mockInstances = [
+        {
+          id: '12345~region(us)~nonce(abc123)',
+          name: 'Public Instance #1',
+          type: 'public',
+          region: 'us',
+          userCount: 8,
+          capacity: 16,
+          full: false,
+          canRequestInvite: true,
+          platforms: {
+            standalonewindows: 5,
+            android: 3
+          },
+          users: [
+            {
+              id: 'usr_example_1',
+              username: 'ExampleUser1',
+              displayName: 'Example User 1',
+              userIcon: 'https://via.placeholder.com/256x256/4a90e2/ffffff?text=U1',
+              profilePicOverride: 'https://via.placeholder.com/256x256/4a90e2/ffffff?text=U1',
+              currentAvatarImageUrl: 'https://via.placeholder.com/512x512/7ed321/ffffff?text=A1',
+              status: 'active',
+              tags: ['system_trust_known', 'language_eng'],
+              isFriend: true
+            },
+            {
+              id: 'usr_example_2',
+              username: 'ExampleUser2',
+              displayName: 'Example User 2',
+              userIcon: 'https://via.placeholder.com/256x256/f5a623/ffffff?text=U2',
+              profilePicOverride: 'https://via.placeholder.com/256x256/f5a623/ffffff?text=U2',
+              currentAvatarImageUrl: 'https://via.placeholder.com/512x512/50e3c2/ffffff?text=A2',
+              status: 'join me',
+              tags: ['system_trust_trusted', 'language_eng'],
+              isFriend: false
+            }
+          ],
+          friends: [
+            {
+              id: 'usr_friend_1',
+              username: 'FriendInInstance',
+              displayName: 'Friend In Instance',
+              status: 'active'
+            }
+          ],
+          shortName: 'Public #1',
+          secureName: 'PublicInstance1',
+          worldId: worldId,
+          ownerId: 'usr_example_1',
+          tags: ['public', 'social'],
+          createdAt: new Date(Date.now() - 3600000).toISOString(), // 1 hora atrás
+          queueEnabled: false,
+          queueSize: 0
+        },
+        {
+          id: '67890~region(eu)~nonce(def456)',
+          name: 'Friends Only Instance',
+          type: 'friends',
+          region: 'eu',
+          userCount: 4,
+          capacity: 16,
+          full: false,
+          canRequestInvite: false,
+          platforms: {
+            standalonewindows: 3,
+            android: 1
+          },
+          users: [],
+          friends: [
+            {
+              id: 'usr_friend_2',
+              username: 'BestFriend',
+              displayName: 'Best Friend',
+              status: 'active'
+            },
+            {
+              id: 'usr_friend_3',
+              username: 'AnotherFriend',
+              displayName: 'Another Friend',
+              status: 'join me'
+            }
+          ],
+          shortName: 'Friends #1',
+          secureName: 'FriendsInstance1',
+          worldId: worldId,
+          ownerId: 'usr_friend_2',
+          tags: ['friends', 'private'],
+          createdAt: new Date(Date.now() - 7200000).toISOString(), // 2 horas atrás
+          queueEnabled: false,
+          queueSize: 0
+        },
+        {
+          id: '11111~region(us)~nonce(ghi789)',
+          name: 'Invite Only VIP',
+          type: 'invite',
+          region: 'us',
+          userCount: 12,
+          capacity: 16,
+          full: false,
+          canRequestInvite: true,
+          platforms: {
+            standalonewindows: 8,
+            android: 2,
+            queststandalone: 2
+          },
+          users: [],
+          friends: [],
+          shortName: 'VIP Invite',
+          secureName: 'VIPInviteInstance',
+          worldId: worldId,
+          ownerId: 'usr_vip_owner',
+          tags: ['invite', 'vip', 'event'],
+          createdAt: new Date(Date.now() - 1800000).toISOString(), // 30 min atrás
+          queueEnabled: true,
+          queueSize: 3
+        }
+      ]
+      
+      return res.json({
+        success: true,
+        data: {
+          instances: mockInstances,
+          total: mockInstances.length,
+          mock: true
+        },
+        message: 'Dados mock - cookie de autenticação necessário para instâncias reais'
+      })
+    }
+
+    // Busca real na API VRChat
+    const instancesResult = await vrchatService.getWorldInstances(authCookie, worldId)
+    
+    if (!instancesResult.success) {
+      console.log('❌ Falha ao buscar instâncias:', instancesResult.error)
+      return res.status(500).json({
+        success: false,
+        message: instancesResult.error
+      })
+    }
+
+    console.log('✅ Instâncias encontradas:', instancesResult.instances?.length || 0)
+
+    res.json({
+      success: true,
+      data: {
+        instances: instancesResult.instances || [],
+        total: instancesResult.total || 0,
+        mock: false
+      }
+    })
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar instâncias do mundo:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    })
+  }
+})
+
 module.exports = router

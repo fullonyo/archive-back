@@ -673,6 +673,191 @@ class VRChatService {
   }
 
   /**
+   * Busca mundos por critérios específicos
+   */
+  async searchWorlds(authCookie, { q, tag, user, n = 60, offset = 0, sort = 'popularity', order = 'descending' }) {
+    try {
+      console.log('🔍 Searching worlds from VRChat API...')
+      
+      // Constrói query string
+      const params = new URLSearchParams()
+      if (q) params.append('search', q)
+      if (tag) params.append('tag', tag)
+      if (user) params.append('user', user)
+      params.append('n', n.toString())
+      params.append('offset', offset.toString())
+      params.append('sort', sort)
+      params.append('order', order)
+      
+      const endpoint = `/worlds?${params.toString()}`
+      const result = await this.makeAuthenticatedRequest(endpoint, authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to search worlds:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          worlds: []
+        }
+      }
+      
+      console.log('✅ Worlds search completed successfully:', result.data?.length || 0, 'worlds found')
+      
+      return {
+        success: true,
+        worlds: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error searching worlds:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar mundos',
+        worlds: []
+      }
+    }
+  }
+
+  /**
+   * Busca mundos em destaque
+   */
+  async getFeaturedWorlds(authCookie) {
+    try {
+      console.log('⭐ Fetching featured worlds from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest('/worlds?featured=true&sort=order&n=60', authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch featured worlds:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          worlds: []
+        }
+      }
+      
+      console.log('✅ Featured worlds fetched successfully:', result.data?.length || 0, 'worlds')
+      
+      return {
+        success: true,
+        worlds: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching featured worlds:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar mundos em destaque',
+        worlds: []
+      }
+    }
+  }
+
+  /**
+   * Busca detalhes específicos de um mundo
+   */
+  async getWorldDetails(authCookie, worldId) {
+    try {
+      console.log('🌍 Fetching world details from VRChat API for:', worldId)
+      
+      const result = await this.makeAuthenticatedRequest(`/worlds/${worldId}`, authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch world details:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          world: null
+        }
+      }
+      
+      console.log('✅ World details fetched successfully:', result.data?.name || 'Unknown world')
+      
+      return {
+        success: true,
+        world: result.data
+      }
+    } catch (error) {
+      console.error('❌ Error fetching world details:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar detalhes do mundo',
+        world: null
+      }
+    }
+  }
+
+  /**
+   * Buscar instâncias ativas de um mundo específico
+   */
+  async getWorldInstances(authCookie, worldId) {
+    try {
+      console.log('🌐 Fetching world instances from VRChat API for:', worldId)
+      
+      const result = await this.makeAuthenticatedRequest(`/worlds/${worldId}/instances`, authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch world instances:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          instances: []
+        }
+      }
+      
+      console.log('✅ World instances fetched successfully:', result.data?.length || 0, 'instances')
+      
+      return {
+        success: true,
+        instances: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching world instances:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar instâncias do mundo',
+        instances: []
+      }
+    }
+  }
+
+  /**
+   * Busca mundos populares
+   */
+  async getPopularWorlds(authCookie, n = 60) {
+    try {
+      console.log('🔥 Fetching popular worlds from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest(`/worlds?sort=popularity&order=descending&n=${n}`, authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch popular worlds:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          worlds: []
+        }
+      }
+      
+      console.log('✅ Popular worlds fetched successfully:', result.data?.length || 0, 'worlds')
+      
+      return {
+        success: true,
+        worlds: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching popular worlds:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar mundos populares',
+        worlds: []
+      }
+    }
+  }
+
+  /**
    * Sincroniza favoritos (placeholder para implementação futura)
    */
   async syncFavorites(userId, authCookie) {
