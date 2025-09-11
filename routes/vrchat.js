@@ -443,17 +443,171 @@ router.get('/friends', async (req, res) => {
     const authCookie = connection.authCookie
     
     if (!authCookie) {
-      console.log('❌ Cookie de autenticação não encontrado, usando dados mock')
-      // Fallback para dados mock se não temos cookie
+      console.log('❌ Cookie de autenticação não encontrado, usando dados mock expandidos')
+      // Fallback para dados mock expandidos se não temos cookie
       const mockFriends = [
         {
           id: 'usr_mock1',
-          displayName: 'Mock Friend 1',
+          displayName: 'Friend Online',
+          username: 'friend_online',
           status: 'online',
-          statusDescription: 'Using mock data',
-          location: 'mock_world',
-          currentAvatarImageUrl: '',
+          statusDescription: 'Hanging out',
+          location: 'wrld_4432ea9b-729c-46e3-8eaf-846aa0a37fdd:12345~friends(usr_mock1)',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_veteran', 'system_avatar_access']
+        },
+        {
+          id: 'usr_mock2',
+          displayName: 'Friend Busy',
+          username: 'friend_busy',
+          status: 'busy',
+          statusDescription: 'Do not disturb',
+          location: 'wrld_6caf5200-70ac-4b8a-aa8d-89c0d5317530:67890~public',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_known']
+        },
+        {
+          id: 'usr_mock3',
+          displayName: 'Friend Offline',
+          username: 'friend_offline',
+          status: 'offline',
+          statusDescription: 'Last seen 2 hours ago',
+          location: 'offline',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_trusted']
+        },
+        {
+          id: 'usr_mock4',
+          displayName: 'Friend Join Me',
+          username: 'friend_joinme',
+          status: 'join me',
+          statusDescription: 'Come hang out!',
+          location: 'wrld_858dfdfc-1b48-4e1e-8a43-f0edc611e5fe:11111~friends(usr_mock4)',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
           tags: ['system_trust_veteran']
+        },
+        {
+          id: 'usr_mock5',
+          displayName: 'Friend Active',
+          username: 'friend_active',
+          status: 'active',
+          statusDescription: 'Exploring worlds',
+          location: 'wrld_ba913a96-fac4-4048-a062-9aa5db092812:22222~public',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_known']
+        },
+        {
+          id: 'usr_mock6',
+          displayName: 'Friend Ask Me',
+          username: 'friend_askme',
+          status: 'ask me',
+          statusDescription: 'Ask before joining',
+          location: 'wrld_4cf554b4-430c-4f8f-b53e-1f294eed230b:33333~invite(usr_mock6)',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_trusted']
+        },
+        {
+          id: 'usr_mock7',
+          displayName: 'Another Offline Friend',
+          username: 'friend_offline2',
+          status: 'offline',
+          statusDescription: 'Last seen yesterday',
+          location: 'offline',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_new']
+        },
+        {
+          id: 'usr_mock8',
+          displayName: 'Friend in Unknown World',
+          username: 'friend_unknown',
+          status: 'online',
+          statusDescription: 'Somewhere new',
+          location: 'wrld_1234567890abcdef-unknown-world-id:44444~public',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_known']
+        }
+      ]
+      
+      console.log('📊 Mock friends criados:', mockFriends.length, 'amigos')
+      console.log('📊 Status mock:', mockFriends.map(f => ({ name: f.displayName, status: f.status })))
+      
+      return res.json({
+        success: true,
+        data: {
+          friends: mockFriends,
+          total: mockFriends.length,
+          mock: true
+        },
+        message: 'Dados mock expandidos - cookie de autenticação necessário para dados reais'
+      })
+    }
+
+    // Busca dados reais da API VRChat
+    console.log('🔄 Buscando dados reais da API VRChat...')
+    const friendsResult = await vrchatService.getFriends(authCookie)
+    
+    console.log('📊 Resultado da API VRChat:', {
+      success: friendsResult.success,
+      total: friendsResult.total,
+      friendsLength: friendsResult.friends?.length,
+      error: friendsResult.error
+    })
+    
+    if (!friendsResult.success) {
+      console.log('❌ Falha ao buscar amigos reais:', friendsResult.error)
+      
+      // Se falha, usar dados mock com mais variedade
+      console.log('🔄 Fallback para dados mock expandidos...')
+      const mockFriends = [
+        {
+          id: 'usr_mock1',
+          displayName: 'Friend Online',
+          username: 'friend_online',
+          status: 'online',
+          statusDescription: 'In The Great Pug',
+          location: 'wrld_4432ea9b-729c-46e3-8eaf-846aa0a37fdd:12345~friends(usr_mock1)',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_veteran', 'system_avatar_access']
+        },
+        {
+          id: 'usr_mock2',
+          displayName: 'Friend Busy',
+          username: 'friend_busy',
+          status: 'busy',
+          statusDescription: 'Do not disturb',
+          location: 'private',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_known']
+        },
+        {
+          id: 'usr_mock3',
+          displayName: 'Friend Offline',
+          username: 'friend_offline',
+          status: 'offline',
+          statusDescription: 'Last seen 2 hours ago',
+          location: 'offline',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_trusted']
+        },
+        {
+          id: 'usr_mock4',
+          displayName: 'Friend Join Me',
+          username: 'friend_joinme',
+          status: 'join me',
+          statusDescription: 'Come hang out!',
+          location: 'wrld_5555ea9b-729c-46e3-8eaf-846aa0a37fff:67890~friends(usr_mock4)',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_veteran']
+        },
+        {
+          id: 'usr_mock5',
+          displayName: 'Friend Active',
+          username: 'friend_active',
+          status: 'active',
+          statusDescription: 'Exploring worlds',
+          location: 'wrld_7777ea9b-729c-46e3-8eaf-846aa0a37aaa:11111~public',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_known']
         }
       ]
       
@@ -464,19 +618,14 @@ router.get('/friends', async (req, res) => {
           total: mockFriends.length,
           mock: true
         },
-        message: 'Dados mock - cookie de autenticação necessário para dados reais'
+        message: 'Dados mock expandidos - falha na API real: ' + friendsResult.error
       })
     }
 
-    // Busca dados reais da API VRChat
-    const friendsResult = await vrchatService.getFriends(authCookie)
-    
-    if (!friendsResult.success) {
-      console.log('❌ Falha ao buscar amigos reais:', friendsResult.error)
-      return res.status(500).json({
-        success: false,
-        message: friendsResult.error
-      })
+    // Log dos dados reais recebidos
+    if (friendsResult.friends && friendsResult.friends.length > 0) {
+      console.log('👥 Primeiro amigo real recebido:', JSON.stringify(friendsResult.friends[0], null, 2))
+      console.log('📊 Status dos amigos:', friendsResult.friends.map(f => ({ name: f.displayName, status: f.status })))
     }
 
     res.json({
@@ -486,7 +635,7 @@ router.get('/friends', async (req, res) => {
         total: friendsResult.total,
         mock: false
       },
-      message: 'Lista de amigos obtida com sucesso'
+      message: `Lista de amigos obtida com sucesso - ${friendsResult.total} amigos reais`
     })
 
   } catch (error) {
