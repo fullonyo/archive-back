@@ -1,0 +1,649 @@
+const axios = require('axios')
+const { PrismaClient } = require('@prisma/client')
+const prisma = new PrismaClient()
+
+class VRChatService {
+  constructor() {
+    this.baseURL = 'https://api.vrchat.cloud/api/1'
+    this.userAgent = 'VRCHIEVE/2.1.3 (Archive Nyo Integration)'
+    this.lastRequestTime = 0
+    this.minDelayBetweenRequests = 15000 // 15 segundos entre requests
+    this.rateLimitRetryDelay = 30000 // 30 segundos para rate limit
+    
+    this.axiosInstance = axios.create({
+      baseURL: this.baseURL,
+      headers: {
+        'User-Agent': this.userAgent,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    })
+
+    // Interceptor para logging
+    this.axiosInstance.interceptors.request.use(
+      (config) => {
+        console.log(`🔗 VRChat API Request: ${config.method?.toUpperCase()} ${config.url}`)
+        console.log(`🔑 Headers:`, Object.keys(config.headers || {}))
+        return config
+      },
+      (error) => {
+        console.error('❌ VRChat API Request Error:', error)
+        return Promise.reject(error)
+      }
+    )
+
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        console.log(`✅ VRChat API Response: ${response.status} ${response.config.url}`)
+        return response
+      },
+      (error) => {
+        console.error('❌ VRChat API Response Error:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: error.config?.url,
+          message: error.message
+        })
+        return Promise.reject(error)
+      }
+    )
+  }
+
+  async waitForRateLimit() {
+    const now = Date.now()
+    const timeSinceLastRequest = now - this.lastRequestTime
+    
+    if (timeSinceLastRequest < this.minDelayBetweenRequests) {
+      const waitTime = this.minDelayBetweenRequests - timeSinceLastRequest
+      console.log(`⏳ Aguardando ${Math.round(waitTime/1000)}s para evitar rate limiting...`)
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+    }
+    
+    this.lastRequestTime = Date.now()
+  }
+
+  /**
+   * Autentica usuário com VRChat (com retry para rate limiting)
+   * @param {string} username - Username do VRChat
+   * @param {string} password - Password do VRChat
+   * @param {string} twoFactorAuth - Código 2FA (opcional)
+   * @param {number} retryCount - Contador de tentativas
+   * @param {boolean} detected2FA - Flag para indicar se 2FA foi detectado antes
+   * @returns {Promise<Object>} Dados de autenticação
+   */
+  async authenticateUser(username, password, twoFactorAuth = null, retryCount = 0, detected2FA = false) {
+    const maxRetries = 2
+    
+    try {
+      // Aguarda para evitar rate limiting
+      await this.waitForRateLimit()
+      
+      // Log do tipo de credencial (email vs username)
+      const isEmail = username.includes('@')
+      console.log(`🔐 VRChat Auth: Using ${isEmail ? 'EMAIL' : 'USERNAME'} - ${username.substring(0, 3)}***`)
+      
+      // Codifica credenciais em base64
+      const credentials = Buffer.from(`${username}:${password}`).toString('base64')
+      
+      // PASSO 1: Login inicial para obter cookie e detectar 2FA
+      const initialResponse = await this.axiosInstance.get('/auth/user', {
+        headers: {
+          'Authorization': `Basic ${credentials}`
+        }
+      })
+      
+      console.log('🔍 VRChat Initial Response:', JSON.stringify(initialResponse.data, null, 2))
+      
+      // Extrai cookie da resposta
+      const setCookieHeader = initialResponse.headers['set-cookie']
+      let authCookie = null
+      
+      if (setCookieHeader) {
+        const authCookieMatch = setCookieHeader.find(cookie => cookie.startsWith('auth='))
+        if (authCookieMatch) {
+          authCookie = authCookieMatch.split(';')[0] // Pega só a parte "auth=valor"
+          console.log('🍪 Cookie extraído para 2FA')
+        }
+      }
+      
+      // Verifica se precisa de 2FA
+      if (initialResponse.data.requiresTwoFactorAuth) {
+        console.log('🔐 VRChat requires 2FA authentication:', initialResponse.data.requiresTwoFactorAuth)
+        
+        // Se não temos código 2FA, retorna para solicitar
+        if (!twoFactorAuth) {
+          return {
+            success: false,
+            requires2FA: true,
+            twoFAType: initialResponse.data.requiresTwoFactorAuth,
+            error: 'Código de verificação necessário',
+            authCookie: authCookie // Salva cookie para próxima tentativa
+          }
+        }
+        
+        // Se temos código 2FA, verifica
+        if (twoFactorAuth && authCookie) {
+          console.log(`🔐 Verificando código 2FA: ${twoFactorAuth}`)
+          
+          try {
+            // PASSO 2: Verificação 2FA com método oficial
+            const twoFAResponse = await this.axiosInstance.post('/auth/twofactorauth/emailotp/verify', {
+              code: twoFactorAuth
+            }, {
+              headers: {
+                'Cookie': authCookie
+              }
+            })
+            
+            console.log('✅ Resposta 2FA:', JSON.stringify(twoFAResponse.data, null, 2))
+            
+            if (twoFAResponse.data.verified === true) {
+              // Aguarda um pouco após verificação
+              await new Promise(resolve => setTimeout(resolve, 2000))
+              
+              // PASSO 3: Busca dados completos do usuário
+              const finalResponse = await this.axiosInstance.get('/auth/user', {
+                headers: {
+                  'Cookie': authCookie
+                }
+              })
+              
+              console.log('✅ Dados finais do usuário obtidos!')
+              
+              if (finalResponse.data.id) {
+                return {
+                  success: true,
+                  user: finalResponse.data,
+                  message: 'Autenticação VRChat completada com sucesso!'
+                }
+              } else {
+                return {
+                  success: false,
+                  requires2FA: true,
+                  twoFAType: initialResponse.data.requiresTwoFactorAuth,
+                  error: 'Falha ao obter dados do usuário após 2FA'
+                }
+              }
+            } else {
+              return {
+                success: false,
+                requires2FA: true,
+                twoFAType: initialResponse.data.requiresTwoFactorAuth,
+                error: 'Código de verificação inválido ou expirado'
+              }
+            }
+            
+          } catch (twoFAError) {
+            console.log('❌ Erro na verificação 2FA:', twoFAError.response?.data || twoFAError.message)
+            return {
+              success: false,
+              requires2FA: true,
+              twoFAType: initialResponse.data.requiresTwoFactorAuth,
+              error: 'Código de verificação inválido ou expirado'
+            }
+          }
+        } else {
+          return {
+            success: false,
+            requires2FA: true,
+            twoFAType: initialResponse.data.requiresTwoFactorAuth,
+            error: 'Cookie não disponível para verificação 2FA'
+          }
+        }
+      }
+      
+      // Se chegou aqui, login bem-sucedido sem 2FA
+      if (initialResponse.data.id) {
+        return {
+          success: true,
+          user: initialResponse.data,
+          message: 'Autenticação VRChat completada com sucesso!'
+        }
+      } else {
+        return {
+          success: false,
+          error: 'Falha na autenticação VRChat'
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ VRChat authentication failed:', error.message)
+      
+      // Rate limiting - com delays maiores
+      if (error.response?.status === 429) {
+        if (retryCount < maxRetries) {
+          const waitTime = this.rateLimitRetryDelay + (retryCount * 10000) // 30s, 40s, 50s
+          console.log(`⏳ Rate limited. Aguardando ${Math.round(waitTime/1000)}s antes de retry (tentativa ${retryCount + 1}/${maxRetries + 1})`)
+          
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+          return this.authenticateUser(username, password, twoFactorAuth, retryCount + 1, detected2FA)
+        } else {
+          // Máximo de retries atingido
+          return {
+            success: false,
+            error: 'Muitas tentativas falharam devido a rate limiting. Aguarde alguns minutos antes de tentar novamente.',
+            rateLimited: true
+          }
+        }
+      }
+      
+      if (error.response?.status === 401) {
+        return {
+          success: false,
+          error: 'Credenciais inválidas. Verifique seu email/username e senha.'
+        }
+      }
+
+      return {
+        success: false,
+        error: `Erro na autenticação VRChat: ${error.message}`
+      }
+    }
+  }
+        
+        // SEGUNDO: Verifica se há dados de usuário autenticado (sucesso completo)
+        if (response.data.id || response.data.user?.id || response.data.currentUser?.id) {
+          const userData = response.data.user || response.data.currentUser || response.data
+          console.log(`✅ VRChat authentication successful for user: ${userData.displayName || userData.username || 'Unknown'}`)
+          return {
+            success: true,
+            user: this.formatUserData(userData),
+            authCookie: response.headers['set-cookie'],
+            requires2FA: false
+          }
+        }
+
+        // Se chegou até aqui, vamos ver se há pelo menos dados de usuário básicos
+        if (response.data.username || response.data.displayName) {
+          console.log('⚠️ VRChat returned user data without ID, proceeding anyway')
+          return {
+            success: true,
+            user: this.formatUserData(response.data),
+            authCookie: response.headers['set-cookie'],
+            requires2FA: false
+          }
+        }
+      }
+
+      console.error('❌ VRChat API returned unexpected data structure:', response.data)
+      throw new Error(`Invalid or incomplete response from VRChat API. Status: ${response.status}`)
+    } catch (error) {
+      console.error('❌ VRChat authentication failed:', error.message)
+      
+      // Rate limiting - com delays maiores
+      if (error.response?.status === 429) {
+        if (retryCount < maxRetries) {
+          const waitTime = this.rateLimitRetryDelay + (retryCount * 10000) // 30s, 40s, 50s
+          console.log(`⏳ Rate limited. Aguardando ${Math.round(waitTime/1000)}s antes de retry (tentativa ${retryCount + 1}/${maxRetries + 1})`)
+          
+          // Verifica se na primeira tentativa foi detectado 2FA antes do rate limit
+          let was2FADetected = detected2FA
+          
+          // Se não foi detectado antes, verifica na resposta atual
+          if (!was2FADetected && error.response?.data) {
+            was2FADetected = error.response.data.requiresTwoFactorAuth || 
+                            (error.response.data.message && 
+                             (error.response.data.message.includes('verificação') ||
+                              error.response.data.message.includes('2FA') ||
+                              error.response.data.message.includes('emailOtp')))
+          }
+          
+          // Logs para debug
+          if (was2FADetected) {
+            console.log('🔐 2FA detection preserved through rate limit retry')
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+          return this.authenticateUser(username, password, twoFactorAuth, retryCount + 1, was2FADetected)
+        } else {
+          // Máximo de retries atingido
+          return {
+            success: false,
+            error: 'Muitas tentativas falharam devido a rate limiting. Aguarde alguns minutos antes de tentar novamente.',
+            rateLimited: true
+          }
+        }
+      }
+      
+      if (error.response?.status === 401) {
+        // Verifica se é erro de 2FA necessário
+        const errorData = error.response.data
+        if (errorData?.error?.message?.includes('2FA') || 
+            errorData?.message?.includes('2FA') ||
+            errorData?.error?.message?.includes('emailOtp') ||
+            errorData?.error?.message?.includes('totp') ||
+            errorData?.requiresTwoFactorAuth) {
+          return {
+            success: false,
+            requires2FA: true,
+            twoFAType: errorData?.requiresTwoFactorAuth,
+            error: 'Código de verificação necessário'
+          }
+        }
+        
+        return {
+          success: false,
+          requires2FA: false,
+          error: 'Credenciais inválidas'
+        }
+      }
+
+      if (error.response?.status === 429) {
+        // Se 2FA foi detectado antes do rate limiting, mantém a flag
+        if (detected2FA) {
+          console.log('🔐 Rate limited but 2FA was detected previously')
+          return {
+            success: false,
+            requires2FA: true,
+            error: 'Código de verificação necessário. Aguarde alguns minutos devido ao limite de tentativas.'
+          }
+        }
+        
+        return {
+          success: false,
+          requires2FA: false,
+          error: 'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.'
+        }
+      }
+
+      return {
+        success: false,
+        requires2FA: false,
+        error: 'Erro na conexão com VRChat'
+      }
+    }
+  }
+
+  /**
+   * Verifica conexão com VRChat usando auth cookie
+   * @param {string} authCookie - Cookie de autenticação
+   * @returns {Promise<Object>} Status da conexão
+   */
+  async verifyConnection(authCookie) {
+    try {
+      const response = await this.axiosInstance.get('/auth/user', {
+        headers: {
+          'Cookie': authCookie
+        }
+      })
+
+      return {
+        success: true,
+        user: this.formatUserData(response.data)
+      }
+    } catch (error) {
+      console.error('❌ VRChat connection verification failed:', error.message)
+      return {
+        success: false,
+        error: 'Conexão expirada ou inválida'
+      }
+    }
+  }
+
+  /**
+   * Busca mundos favoritos do usuário
+   * @param {string} authCookie - Cookie de autenticação
+   * @returns {Promise<Array>} Lista de mundos favoritos
+   */
+  async getFavoriteWorlds(authCookie) {
+    try {
+      const response = await this.axiosInstance.get('/favorites', {
+        params: {
+          type: 'world'
+        },
+        headers: {
+          'Cookie': authCookie
+        }
+      })
+
+      return response.data.map(favorite => this.formatWorldData(favorite))
+    } catch (error) {
+      console.error('❌ Failed to fetch favorite worlds:', error.message)
+      throw error
+    }
+  }
+
+  /**
+   * Busca avatares favoritos do usuário
+   * @param {string} authCookie - Cookie de autenticação
+   * @returns {Promise<Array>} Lista de avatares favoritos
+   */
+  async getFavoriteAvatars(authCookie) {
+    try {
+      const response = await this.axiosInstance.get('/favorites', {
+        params: {
+          type: 'avatar'
+        },
+        headers: {
+          'Cookie': authCookie
+        }
+      })
+
+      return response.data.map(favorite => this.formatAvatarData(favorite))
+    } catch (error) {
+      console.error('❌ Failed to fetch favorite avatars:', error.message)
+      throw error
+    }
+  }
+
+  /**
+   * Busca perfil do usuário
+   * @param {string} userId - ID do usuário VRChat
+   * @param {string} authCookie - Cookie de autenticação
+   * @returns {Promise<Object>} Dados do perfil
+   */
+  async getUserProfile(userId, authCookie) {
+    try {
+      const response = await this.axiosInstance.get(`/users/${userId}`, {
+        headers: {
+          'Cookie': authCookie
+        }
+      })
+
+      return this.formatUserData(response.data)
+    } catch (error) {
+      console.error('❌ Failed to fetch user profile:', error.message)
+      throw error
+    }
+  }
+
+  /**
+   * Salva dados de conexão VRChat no banco
+   * @param {number} userId - ID do usuário no sistema
+   * @param {Object} vrchatData - Dados do VRChat
+   * @returns {Promise<Object>} Resultado da operação
+   */
+  async saveVRChatConnection(userId, vrchatData) {
+    try {
+      // Verifica se já existe uma conexão
+      const existingConnection = await prisma.vRChatConnection.findUnique({
+        where: { userId }
+      })
+
+      const connectionData = {
+        vrchatUserId: vrchatData.id,
+        vrchatUsername: vrchatData.username,
+        vrchatDisplayName: vrchatData.displayName,
+        vrchatBio: vrchatData.bio,
+        vrchatAvatarUrl: vrchatData.currentAvatarImageUrl,
+        vrchatProfilePicUrl: vrchatData.profilePicOverride || vrchatData.userIcon,
+        vrchatTags: JSON.stringify(vrchatData.tags || []),
+        vrchatStatus: vrchatData.status,
+        vrchatStatusDescription: vrchatData.statusDescription,
+        lastSyncAt: new Date(),
+        isActive: true
+      }
+
+      if (existingConnection) {
+        // Atualiza conexão existente
+        const updated = await prisma.vRChatConnection.update({
+          where: { userId },
+          data: connectionData
+        })
+        
+        console.log(`✅ Updated VRChat connection for user ${userId}`)
+        return { success: true, connection: updated, isNew: false }
+      } else {
+        // Cria nova conexão
+        const created = await prisma.vRChatConnection.create({
+          data: {
+            userId,
+            ...connectionData
+          }
+        })
+
+        console.log(`✅ Created VRChat connection for user ${userId}`)
+        return { success: true, connection: created, isNew: true }
+      }
+    } catch (error) {
+      console.error('❌ Failed to save VRChat connection:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Busca conexão VRChat do usuário
+   * @param {number} userId - ID do usuário
+   * @returns {Promise<Object|null>} Dados da conexão
+   */
+  async getVRChatConnection(userId) {
+    try {
+      const connection = await prisma.vRChatConnection.findUnique({
+        where: { userId, isActive: true }
+      })
+
+      return connection
+    } catch (error) {
+      console.error('❌ Failed to get VRChat connection:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Remove conexão VRChat
+   * @param {number} userId - ID do usuário
+   * @returns {Promise<boolean>} Sucesso da operação
+   */
+  async removeVRChatConnection(userId) {
+    try {
+      await prisma.vRChatConnection.updateMany({
+        where: { userId },
+        data: { isActive: false }
+      })
+
+      console.log(`✅ Removed VRChat connection for user ${userId}`)
+      return true
+    } catch (error) {
+      console.error('❌ Failed to remove VRChat connection:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Formata dados do usuário VRChat
+   * @param {Object} userData - Dados brutos do usuário
+   * @returns {Object} Dados formatados
+   */
+  formatUserData(userData) {
+    console.log('🔧 Formatting user data:', JSON.stringify(userData, null, 2))
+    
+    // Extrai dados do usuário independente da estrutura
+    const user = userData.user || userData.currentUser || userData
+    
+    const formatted = {
+      id: user.id || user.userId || 'temp_' + Date.now(),
+      username: user.username || user.displayName || 'unknown_user',
+      displayName: user.displayName || user.username || 'Unknown User',
+      bio: user.bio || user.bioLinks || '',
+      currentAvatarImageUrl: user.currentAvatarImageUrl || user.profilePicOverride || user.userIcon || null,
+      userIcon: user.userIcon || null,
+      profilePicOverride: user.profilePicOverride || null,
+      status: user.status || user.state || 'offline',
+      statusDescription: user.statusDescription || '',
+      tags: user.tags || [],
+      friendKey: user.friendKey || '',
+      isFriend: user.isFriend || false,
+      dateJoined: user.date_joined || user.dateJoined || null,
+      lastActivity: user.last_activity || user.lastActivity || null
+    }
+    
+    console.log('✅ Formatted user data:', JSON.stringify(formatted, null, 2))
+    return formatted
+  }
+
+  /**
+   * Formata dados do mundo VRChat
+   * @param {Object} worldData - Dados brutos do mundo
+   * @returns {Object} Dados formatados
+   */
+  formatWorldData(worldData) {
+    return {
+      id: worldData.favoriteId,
+      worldId: worldData.favoriteId,
+      name: worldData.name || 'Mundo Desconhecido',
+      description: worldData.description,
+      imageUrl: worldData.imageUrl,
+      thumbnailImageUrl: worldData.thumbnailImageUrl,
+      authorId: worldData.authorId,
+      authorName: worldData.authorName,
+      capacity: worldData.capacity,
+      tags: worldData.tags || [],
+      createdAt: worldData.created_at,
+      updatedAt: worldData.updated_at
+    }
+  }
+
+  /**
+   * Formata dados do avatar VRChat
+   * @param {Object} avatarData - Dados brutos do avatar
+   * @returns {Object} Dados formatados
+   */
+  formatAvatarData(avatarData) {
+    return {
+      id: avatarData.favoriteId,
+      avatarId: avatarData.favoriteId,
+      name: avatarData.name || 'Avatar Desconhecido',
+      description: avatarData.description,
+      imageUrl: avatarData.imageUrl,
+      thumbnailImageUrl: avatarData.thumbnailImageUrl,
+      authorId: avatarData.authorId,
+      authorName: avatarData.authorName,
+      tags: avatarData.tags || [],
+      releaseStatus: avatarData.releaseStatus,
+      createdAt: avatarData.created_at,
+      updatedAt: avatarData.updated_at
+    }
+  }
+
+  /**
+   * Sincroniza favoritos do VRChat com o sistema
+   * @param {number} userId - ID do usuário
+   * @param {string} authCookie - Cookie de autenticação
+   * @returns {Promise<Object>} Resultado da sincronização
+   */
+  async syncFavorites(userId, authCookie) {
+    try {
+      const [worlds, avatars] = await Promise.all([
+        this.getFavoriteWorlds(authCookie),
+        this.getFavoriteAvatars(authCookie)
+      ])
+
+      // Aqui você pode implementar a lógica para salvar os favoritos
+      // no seu sistema, criar assets automáticamente, etc.
+
+      console.log(`✅ Synced ${worlds.length} worlds and ${avatars.length} avatars for user ${userId}`)
+      
+      return {
+        success: true,
+        worlds: worlds.length,
+        avatars: avatars.length,
+        syncedAt: new Date()
+      }
+    } catch (error) {
+      console.error('❌ Failed to sync favorites:', error)
+      throw error
+    }
+  }
+}
+
+module.exports = new VRChatService()

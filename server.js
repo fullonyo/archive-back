@@ -31,6 +31,7 @@ const categoryRoutes = require('./routes/categories');
 const tagRoutes = require('./routes/tags');
 const adminRoutes = require('./routes/admin');
 const imageProxyRoutes = require('./routes/imageProxy');
+const vrchatRoutes = require('./routes/vrchat');
 const errorHandler = require('./middleware/errorHandler');
 
 // Importar novos serviços de cache e otimização
@@ -173,6 +174,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/proxy', imageProxyRoutes);
+app.use('/api/vrchat', vrchatRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
