@@ -151,6 +151,7 @@ class VRChatService {
                 return {
                   success: true,
                   user: finalResponse.data,
+                  authCookie: authCookie,
                   message: 'Autenticação VRChat completada com sucesso!'
                 }
               } else {
@@ -191,9 +192,21 @@ class VRChatService {
       
       // Se chegou aqui, login bem-sucedido sem 2FA
       if (initialResponse.data.id) {
+        // Extrai cookie se disponível
+        const setCookieHeader = initialResponse.headers['set-cookie']
+        let authCookie = null
+        
+        if (setCookieHeader) {
+          const authCookieMatch = setCookieHeader.find(cookie => cookie.startsWith('auth='))
+          if (authCookieMatch) {
+            authCookie = authCookieMatch.split(';')[0]
+          }
+        }
+        
         return {
           success: true,
           user: initialResponse.data,
+          authCookie: authCookie,
           message: 'Autenticação VRChat completada com sucesso!'
         }
       } else {
@@ -241,7 +254,7 @@ class VRChatService {
   /**
    * Salva conexão VRChat no banco de dados
    */
-  async saveVRChatConnection(userId, vrchatData) {
+  async saveVRChatConnection(userId, vrchatData, authCookie = null) {
     try {
       // Garante que Prisma está disponível
       if (!this.prisma) {
@@ -265,6 +278,7 @@ class VRChatService {
         vrchatTags: JSON.stringify(vrchatData.tags || []),
         vrchatStatus: vrchatData.status || 'offline',
         vrchatStatusDescription: vrchatData.statusDescription || '',
+        authCookie: authCookie,
         lastSyncAt: new Date()
       }
 
@@ -366,6 +380,295 @@ class VRChatService {
       }
       console.error('❌ Error removing VRChat connection:', error)
       throw new Error('Erro ao remover conexão VRChat')
+    }
+  }
+
+  /**
+   * Busca dados reais da API do VRChat usando cookies de autenticação
+   */
+  async makeAuthenticatedRequest(endpoint, authCookie) {
+    try {
+      await this.waitForRateLimit()
+      
+      const response = await this.axiosInstance.get(endpoint, {
+        headers: {
+          'Cookie': authCookie
+        }
+      })
+      
+      return {
+        success: true,
+        data: response.data
+      }
+    } catch (error) {
+      console.error(`❌ VRChat API Error for ${endpoint}:`, error.response?.data || error.message)
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.message,
+        status: error.response?.status
+      }
+    }
+  }
+
+  /**
+   * Busca lista de amigos reais do VRChat
+   */
+  async getFriends(authCookie) {
+    try {
+      console.log('👥 Fetching real friends list from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest('/auth/user/friends', authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch friends:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          friends: []
+        }
+      }
+      
+      console.log('✅ Friends fetched successfully:', result.data?.length || 0, 'friends')
+      
+      return {
+        success: true,
+        friends: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching friends:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar lista de amigos',
+        friends: []
+      }
+    }
+  }
+
+  /**
+   * Busca lista de amigos online
+   */
+  async getOnlineFriends(authCookie) {
+    try {
+      console.log('🟢 Fetching online friends from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest('/auth/user/friends?offline=false', authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch online friends:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          friends: []
+        }
+      }
+      
+      console.log('✅ Online friends fetched successfully:', result.data?.length || 0, 'online')
+      
+      return {
+        success: true,
+        friends: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching online friends:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar amigos online',
+        friends: []
+      }
+    }
+  }
+
+  /**
+   * Busca mundos favoritos reais
+   */
+  async getFavoriteWorlds(authCookie) {
+    try {
+      console.log('🌍 Fetching favorite worlds from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest('/favorites?type=world', authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch favorite worlds:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          worlds: []
+        }
+      }
+      
+      console.log('✅ Favorite worlds fetched successfully:', result.data?.length || 0, 'worlds')
+      
+      return {
+        success: true,
+        worlds: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching favorite worlds:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar mundos favoritos',
+        worlds: []
+      }
+    }
+  }
+
+  /**
+   * Busca avatares favoritos reais
+   */
+  async getFavoriteAvatars(authCookie) {
+    try {
+      console.log('👤 Fetching favorite avatars from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest('/favorites?type=avatar', authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch favorite avatars:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          avatars: []
+        }
+      }
+      
+      console.log('✅ Favorite avatars fetched successfully:', result.data?.length || 0, 'avatars')
+      
+      return {
+        success: true,
+        avatars: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching favorite avatars:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar avatares favoritos',
+        avatars: []
+      }
+    }
+  }
+
+  /**
+   * Busca mundos visitados recentemente
+   */
+  async getRecentWorlds(authCookie) {
+    try {
+      console.log('🕒 Fetching recent worlds from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest('/worlds/recent', authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch recent worlds:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          worlds: []
+        }
+      }
+      
+      console.log('✅ Recent worlds fetched successfully:', result.data?.length || 0, 'worlds')
+      
+      return {
+        success: true,
+        worlds: result.data || [],
+        total: result.data?.length || 0
+      }
+    } catch (error) {
+      console.error('❌ Error fetching recent worlds:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar mundos recentes',
+        worlds: []
+      }
+    }
+  }
+
+  /**
+   * Busca perfil atual do usuário
+   */
+  async getCurrentUser(authCookie) {
+    try {
+      console.log('👤 Fetching current user from VRChat API...')
+      
+      const result = await this.makeAuthenticatedRequest('/auth/user', authCookie)
+      
+      if (!result.success) {
+        console.log('❌ Failed to fetch current user:', result.error)
+        return {
+          success: false,
+          error: result.error,
+          user: null
+        }
+      }
+      
+      console.log('✅ Current user fetched successfully')
+      
+      return {
+        success: true,
+        user: result.data
+      }
+    } catch (error) {
+      console.error('❌ Error fetching current user:', error)
+      return {
+        success: false,
+        error: 'Erro ao buscar dados do usuário',
+        user: null
+      }
+    }
+  }
+
+  /**
+   * Salva cookie de autenticação para uso em requests futuros
+   */
+  async saveAuthCookie(userId, authCookie) {
+    try {
+      // Garante que Prisma está disponível
+      if (!this.prisma) {
+        console.log('🔄 Creating temporary Prisma client for saveAuthCookie...')
+        const { PrismaClient } = require('@prisma/client')
+        this.prisma = new PrismaClient()
+      }
+      
+      // Atualiza ou cria registro com cookie
+      const updated = await this.prisma.vRChatConnection.update({
+        where: { userId: userId },
+        data: {
+          authCookie: authCookie,
+          lastSyncAt: new Date()
+        }
+      })
+
+      console.log('✅ Auth cookie saved successfully')
+      return updated
+    } catch (error) {
+      console.error('❌ Error saving auth cookie:', error)
+      throw new Error('Erro ao salvar cookie de autenticação')
+    }
+  }
+
+  /**
+   * Busca cookie de autenticação salvo
+   */
+  async getAuthCookie(userId) {
+    try {
+      // Garante que Prisma está disponível
+      if (!this.prisma) {
+        console.log('🔄 Creating temporary Prisma client for getAuthCookie...')
+        const { PrismaClient } = require('@prisma/client')
+        this.prisma = new PrismaClient()
+      }
+      
+      const connection = await this.prisma.vRChatConnection.findUnique({
+        where: { userId: userId },
+        select: { authCookie: true }
+      })
+
+      return connection?.authCookie || null
+    } catch (error) {
+      console.error('❌ Error getting auth cookie:', error)
+      return null
     }
   }
 

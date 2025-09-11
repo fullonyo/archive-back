@@ -292,6 +292,7 @@ model VRChatConnection {
   vrchatTags             String?  @map("vrchat_tags") @db.LongText
   vrchatStatus           String?  @map("vrchat_status") @db.VarChar(50)
   vrchatStatusDescription String? @map("vrchat_status_description") @db.VarChar(255)
+  authCookie             String?  @map("auth_cookie") @db.Text
   lastSyncAt             DateTime @map("last_sync_at")
   isActive               Boolean  @default(true) @map("is_active")
   createdAt              DateTime @default(now()) @map("created_at")
