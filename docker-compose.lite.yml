@@ -1,0 +1,44 @@
+version: '3.8'
+
+# Override para usar Dockerfile.lite (build mais rápido)
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.lite
+      target: lite
+    environment:
+      - NODE_ENV=production
+      # Banco de dados externo (Hostinger)
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      # JWT e autenticação
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      # Redis interno
+      - REDIS_URL=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-vrchieve123}
+      # URLs da aplicação
+      - FRONTEND_URL=${FRONTEND_URL}
+      - BACKEND_URL=${BACKEND_URL}
+      # Google Services
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+    # Comando simples para produção
+    command: >
+      sh -c "
+        echo '🚀 Backend starting in production mode (lite)...'
+        echo '🔗 Connecting to external database at ${DB_HOST}:${DB_PORT}'
+        node server.js
+      "
+    # Remover portas expostas em produção
+    ports: []
+    # Volumes mínimos para produção
+    volumes:
+      - backend-cdn-cache:/app/cdn-cache
+      - backend-logs:/app/logs

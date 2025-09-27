@@ -1,0 +1,42 @@
+# Dockerfile ultra-simples para contornar problemas de rede
+FROM node:18-alpine
+
+# Instalar apenas o essencial
+RUN apk add --no-cache dumb-init
+
+# Criar usuário
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nodeuser
+
+WORKDIR /app
+
+# Copiar tudo de uma vez (pior para cache, melhor para rede instável)
+COPY . .
+
+# Configurar npm para ser mais tolerante
+RUN npm config set registry https://registry.npmjs.org/ \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-retries 10 \
+    && npm config set fetch-timeout 300000
+
+# Tentar instalar com fallbacks
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund || \
+    npm install --omit=dev --ignore-scripts --no-audit --no-fund || \
+    (npm cache clean --force && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
+
+# Gerar Prisma
+RUN npx prisma generate || echo "Prisma generation failed, continuing..."
+
+# Limpar
+RUN npm cache clean --force
+
+# Permissões
+RUN chown -R nodeuser:nodejs . \
+    && mkdir -p cdn-cache logs \
+    && chown -R nodeuser:nodejs cdn-cache logs
+
+USER nodeuser
+EXPOSE 3001
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "server.js"]
