@@ -20,16 +20,15 @@ COPY --chown=nodeuser:nodejs prisma ./prisma/
 # Stage para dependências de produção
 # ================================
 FROM base AS deps
-USER nodeuser
-RUN npm ci --only=production --ignore-scripts && npm cache clean --force
+# Instalar dependências como root, depois mudar ownership
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN chown -R nodeuser:nodejs /app/node_modules
 
 # ================================
 # Stage para build e desenvolvimento
 # ================================
 FROM base AS builder
-USER nodeuser
-
-# Instalar todas as dependências (dev + prod)
+# Instalar todas as dependências (dev + prod) como root
 RUN npm ci --ignore-scripts
 
 # Copiar código fonte
@@ -40,6 +39,7 @@ RUN npx prisma generate
 
 # Limpar cache npm
 RUN npm cache clean --force
+RUN chown -R nodeuser:nodejs /app
 
 # ================================
 # Stage final - produção
