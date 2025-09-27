@@ -1,16 +1,12 @@
-# Dependências
+# Dependências (node_modules será instalado no container)
 node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Arquivos de ambiente (serão montados via volume ou env_file)
-.env
-.env.local
-.env.production
-.env.development.local
-.env.test.local
-.env.production.local
+# Arquivos de ambiente (montados via env_file)
+.env*
+!.env.example
 
 # Cache e arquivos temporários
 .npm
@@ -18,8 +14,9 @@ yarn-error.log*
 *.tgz
 *.tar.gz
 *.log
+logs/*
 
-# Arquivos de desenvolvimento
+# Arquivos de desenvolvimento e versionamento
 .git
 .gitignore
 README.md
@@ -33,34 +30,39 @@ Thumbs.db
 *.swo
 *~
 
-# Arquivos de teste
+# Arquivos de teste e cobertura
 coverage
 .nyc_output
 test-results
 jest-coverage
+**/*.test.js
+**/*.spec.js
 
-# Cache CDN (será montado via volume em desenvolvimento)
+# Cache CDN (será montado via volume)
 cdn-cache/*
 !cdn-cache/.gitkeep
 
-# Arquivos de build (se houver)
+# Arquivos de build/dist (se existirem)
 dist
 build
 out
 
-# Arquivos Docker
-Dockerfile
+# Arquivos Docker (não precisam ir para o container)
+Dockerfile*
 .dockerignore
 docker-compose*.yml
 
-# Arquivos de documentação
+# Scripts de desenvolvimento que não rodam em produção
+scripts/test-*.js
+scripts/create-test-data.js
+
+# Documentação
 docs
 *.md
 !README.md
 
-# Arquivos de migração (já estão no código)
-migrations/*.sql
-!migrations
-
-# Arquivos de configuração local
-.env.example
+# Arquivos temporários do sistema
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
