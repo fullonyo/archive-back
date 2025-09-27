@@ -4,8 +4,7 @@ FROM node:18-alpine AS base
 # Instalar dependências necessárias e ferramentas de build
 RUN apk add --no-cache \
     libc6-compat \
-    dumb-init \
-    && npm install -g npm@latest
+    dumb-init
 
 # Criar usuário não-root desde o início
 RUN addgroup --system --gid 1001 nodejs \
