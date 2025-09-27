@@ -474,7 +474,9 @@ router.get('/friends', async (req, res) => {
           statusDescription: 'Last seen 2 hours ago',
           location: 'offline',
           currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
-          tags: ['system_trust_trusted']
+          tags: ['system_trust_trusted'],
+          last_login: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 horas atrás
+          date_joined: new Date(2021, 8, 25).toISOString()
         },
         {
           id: 'usr_mock4',
@@ -567,7 +569,9 @@ router.get('/friends', async (req, res) => {
           statusDescription: 'In The Great Pug',
           location: 'wrld_4432ea9b-729c-46e3-8eaf-846aa0a37fdd:12345~friends(usr_mock1)',
           currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
-          tags: ['system_trust_veteran', 'system_avatar_access']
+          tags: ['system_trust_veteran', 'system_avatar_access'],
+          last_login: new Date().toISOString(),
+          date_joined: new Date(2022, 5, 15).toISOString()
         },
         {
           id: 'usr_mock2',
@@ -577,7 +581,9 @@ router.get('/friends', async (req, res) => {
           statusDescription: 'Do not disturb',
           location: 'private',
           currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
-          tags: ['system_trust_known']
+          tags: ['system_trust_known'],
+          last_login: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 minutos atrás
+          date_joined: new Date(2023, 2, 10).toISOString()
         },
         {
           id: 'usr_mock3',
@@ -597,7 +603,9 @@ router.get('/friends', async (req, res) => {
           statusDescription: 'Come hang out!',
           location: 'wrld_5555ea9b-729c-46e3-8eaf-846aa0a37fff:67890~friends(usr_mock4)',
           currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
-          tags: ['system_trust_veteran']
+          tags: ['system_trust_veteran'],
+          last_login: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 minutos atrás (recém online)
+          date_joined: new Date(2023, 6, 20).toISOString()
         },
         {
           id: 'usr_mock5',
@@ -607,7 +615,57 @@ router.get('/friends', async (req, res) => {
           statusDescription: 'Exploring worlds',
           location: 'wrld_7777ea9b-729c-46e3-8eaf-846aa0a37aaa:11111~public',
           currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
-          tags: ['system_trust_known']
+          tags: ['system_trust_known'],
+          last_login: new Date().toISOString(), // Online agora
+          date_joined: new Date(2022, 11, 8).toISOString()
+        },
+        {
+          id: 'usr_mock6',
+          displayName: 'Friend Ask Me',
+          username: 'friend_askme',
+          status: 'ask me',
+          statusDescription: 'Ask before joining',
+          location: 'wrld_8888ea9b-729c-46e3-8eaf-846aa0a37bbb:22222~friends(usr_mock6)',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_trusted'],
+          last_login: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 minutos atrás
+          date_joined: new Date(2021, 3, 5).toISOString()
+        },
+        {
+          id: 'usr_mock7',
+          displayName: 'Friend Offline 2',
+          username: 'friend_offline2',
+          status: 'offline',
+          statusDescription: 'Last seen yesterday',
+          location: 'offline',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_new'],
+          last_login: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 dia atrás
+          date_joined: new Date(2024, 1, 3).toISOString()
+        },
+        {
+          id: 'usr_mock8',
+          displayName: 'Friend Away',
+          username: 'friend_away',
+          status: 'away',
+          statusDescription: 'Away from keyboard',
+          location: 'wrld_9999ea9b-729c-46e3-8eaf-846aa0a37ccc:33333~private(usr_mock8)',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_veteran'],
+          last_login: new Date(Date.now() - 45 * 60 * 1000).toISOString(), // 45 minutos atrás
+          date_joined: new Date(2020, 9, 14).toISOString()
+        },
+        {
+          id: 'usr_mock9',
+          displayName: 'Friend Offline 3',
+          username: 'friend_offline3',
+          status: 'offline',
+          statusDescription: 'Last seen 5 days ago',
+          location: 'offline',
+          currentAvatarImageUrl: 'https://d348imysud55la.cloudfront.net/icons/default_user_icon.png',
+          tags: ['system_trust_known'],
+          last_login: new Date(Date.now() - 600 * 24 * 60 * 60 * 1000).toISOString(), // 600 dias atrás
+          date_joined: new Date(2020, 4, 12).toISOString()
         }
       ]
       
@@ -1080,15 +1138,28 @@ router.get('/worlds/:worldId', async (req, res) => {
     const authCookie = connection.authCookie
     
     if (!authCookie) {
-      // Fallback para dados mock de mundo específico
+      // Fallback para dados mock de mundo específico com nomes mais realistas
+      const mockWorldNames = {
+        'wrld_4432ea9b-729c-46e3-8eaf-846aa0a37fdd': 'The Great Pug',
+        'wrld_6caf5200-70ac-4b8a-aa8d-89c0d5317530': 'Club Orion',
+        'wrld_858dfdfc-1b48-4e1e-8a43-f0edc611e5fe': 'Murder 4',
+        'wrld_ba913a96-fac4-4048-a062-9aa5db092812': 'The Black Cat',
+        'wrld_b73c94ce-7d6e-45ce-a6f0-6ce5b73c94ce': 'VRChat Home',
+        'wrld_c84d95df-8e7f-56df-b7g1-7df6c84d95df': 'Tutorial World',
+        'wrld_d95e06e0-9f80-67e0-c8h2-8e07d95e06e0': 'Japan Shrine',
+        'wrld_e06f17f1-a091-78f1-d9i3-9f18e06f17f1': 'Drinking Night'
+      }
+      
+      const worldName = mockWorldNames[worldId] || `Amazing World ${worldId.substring(5, 13).toUpperCase()}`
+      
       const mockWorldDetails = {
         id: worldId,
-        name: 'Mock World Details',
-        authorName: 'MockCreator',
-        authorId: 'usr_mock',
-        imageUrl: 'https://via.placeholder.com/512x288/4a4a4a/ffffff?text=World+Details',
-        thumbnailImageUrl: 'https://via.placeholder.com/256x144/4a4a4a/ffffff?text=World+Details',
-        description: 'Detalhes completos do mundo com informações mock para demonstração',
+        name: worldName,
+        authorName: 'WorldCreator',
+        authorId: 'usr_creator_123',
+        imageUrl: `https://via.placeholder.com/512x288/4a4a4a/ffffff?text=${encodeURIComponent(worldName)}`,
+        thumbnailImageUrl: `https://via.placeholder.com/256x144/4a4a4a/ffffff?text=${encodeURIComponent(worldName)}`,
+        description: `Um incrível mundo VRChat chamado ${worldName}. Explore e se divirta com seus amigos!`,
         capacity: 16,
         recommendedCapacity: 8,
         favoriteCount: 3456,

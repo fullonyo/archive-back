@@ -415,25 +415,59 @@ class VRChatService {
    */
   async getFriends(authCookie) {
     try {
-      console.log('👥 Fetching real friends list from VRChat API...')
+      console.log('👥 Fetching ALL friends list (online + offline) from VRChat API...')
       
-      const result = await this.makeAuthenticatedRequest('/auth/user/friends', authCookie)
+      // Fazer duas chamadas: uma para amigos online e outra para offline
+      console.log('🔄 Fetching online friends...')
+      const onlineResult = await this.makeAuthenticatedRequest('/auth/user/friends', authCookie)
       
-      if (!result.success) {
-        console.log('❌ Failed to fetch friends:', result.error)
+      console.log('🔄 Fetching offline friends...')
+      const offlineResult = await this.makeAuthenticatedRequest('/auth/user/friends?offline=true', authCookie)
+      
+      // Verificar se ambas as chamadas foram bem-sucedidas
+      if (!onlineResult.success) {
+        console.log('❌ Failed to fetch online friends:', onlineResult.error)
         return {
           success: false,
-          error: result.error,
+          error: `Failed to fetch online friends: ${onlineResult.error}`,
           friends: []
         }
       }
       
-      console.log('✅ Friends fetched successfully:', result.data?.length || 0, 'friends')
+      if (!offlineResult.success) {
+        console.log('❌ Failed to fetch offline friends:', offlineResult.error)
+        return {
+          success: false,
+          error: `Failed to fetch offline friends: ${offlineResult.error}`,
+          friends: []
+        }
+      }
+      
+      // Combinar os resultados
+      const onlineFriends = onlineResult.data || []
+      const offlineFriends = offlineResult.data || []
+      const allFriends = [...onlineFriends, ...offlineFriends]
+      
+      // Remover duplicatas baseado no ID (caso haja)
+      const uniqueFriends = allFriends.reduce((acc, friend) => {
+        const existingFriend = acc.find(f => f.id === friend.id)
+        if (!existingFriend) {
+          acc.push(friend)
+        }
+        return acc
+      }, [])
+      
+      console.log('✅ Friends fetched and combined successfully:', {
+        online: onlineFriends.length,
+        offline: offlineFriends.length,
+        total: uniqueFriends.length,
+        duplicatesRemoved: allFriends.length - uniqueFriends.length
+      })
       
       return {
         success: true,
-        friends: result.data || [],
-        total: result.data?.length || 0
+        friends: uniqueFriends,
+        total: uniqueFriends.length
       }
     } catch (error) {
       console.error('❌ Error fetching friends:', error)

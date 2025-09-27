@@ -1,0 +1,66 @@
+# Dependências
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos de ambiente (serão montados via volume ou env_file)
+.env
+.env.local
+.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Cache e arquivos temporários
+.npm
+.cache
+*.tgz
+*.tar.gz
+*.log
+
+# Arquivos de desenvolvimento
+.git
+.gitignore
+README.md
+.DS_Store
+Thumbs.db
+
+# Arquivos de IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Arquivos de teste
+coverage
+.nyc_output
+test-results
+jest-coverage
+
+# Cache CDN (será montado via volume em desenvolvimento)
+cdn-cache/*
+!cdn-cache/.gitkeep
+
+# Arquivos de build (se houver)
+dist
+build
+out
+
+# Arquivos Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Arquivos de documentação
+docs
+*.md
+!README.md
+
+# Arquivos de migração (já estão no código)
+migrations/*.sql
+!migrations
+
+# Arquivos de configuração local
+.env.example

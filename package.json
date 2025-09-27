@@ -14,7 +14,16 @@
     "prisma:studio": "prisma studio",
     "prisma:reset": "prisma migrate reset",
     "prisma:seed": "node scripts/seed.js",
-    "db:setup": "npm run prisma:generate && npm run prisma:push && npm run prisma:seed"
+    "db:setup": "npm run prisma:generate && npm run prisma:push && npm run prisma:seed",
+    "docker:build": "docker build -t vrchieve-backend .",
+    "docker:run": "docker run -p 3001:3001 --env-file .env vrchieve-backend",
+    "docker:dev": "docker-compose up --build",
+    "docker:prod": "docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d",
+    "docker:stop": "docker-compose down",
+    "docker:clean": "docker-compose down -v --remove-orphans && docker system prune -f",
+    "docker:logs": "docker-compose logs -f vrchieve-backend",
+    "docker:redis": "docker-compose exec redis redis-cli",
+    "docker:shell": "docker-compose exec vrchieve-backend sh"
   },
   "dependencies": {
     "@prisma/client": "^6.15.0",

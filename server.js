@@ -176,13 +176,53 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/proxy', imageProxyRoutes);
 app.use('/api/vrchat', vrchatRoutes);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
+// Health check endpoint (melhorado para Docker)
+app.get('/api/health', async (req, res) => {
+  try {
+    const health = {
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV,
+      version: process.env.npm_package_version || '1.0.0'
+    };
+
+    // Verificar conexão com Redis
+    try {
+      const redisHealth = await redisCacheService.healthCheck();
+      health.redis = redisHealth;
+    } catch (error) {
+      health.redis = { status: 'error', message: error.message };
+    }
+
+    // Verificar conexão com database
+    try {
+      await connectDB();
+      health.database = { status: 'connected' };
+    } catch (error) {
+      health.database = { status: 'error', message: error.message };
+      return res.status(503).json(health);
+    }
+
+    res.status(200).json(health);
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Health check simples para Docker (sem autenticação)
+app.get('/health', async (req, res) => {
+  try {
+    // Check básico de conectividade
+    await connectDB();
+    res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+  } catch (error) {
+    res.status(503).json({ status: 'error', message: error.message });
+  }
 });
 
 // Cache stats endpoint
