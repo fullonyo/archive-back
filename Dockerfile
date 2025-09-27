@@ -21,8 +21,13 @@ FROM base AS deps-prod
 # Isso permite cache quando só o código muda, não as dependências
 COPY package*.json ./
 
-# Instalar apenas dependências de produção
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+# Instalar apenas dependências de produção com retry
+RUN npm config set fetch-retry-maxtimeout 300000 \
+    && npm config set fetch-retry-mintimeout 30000 \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-timeout 600000 \
+    && npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+    && npm cache clean --force
 
 # ================================
 # Stage 2: Todas as Dependências + Build
@@ -32,8 +37,13 @@ FROM base AS deps-all
 # Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar TODAS as dependências (prod + dev) para build
-RUN npm ci --ignore-scripts && npm cache clean --force
+# Instalar TODAS as dependências (prod + dev) para build com retry
+RUN npm config set fetch-retry-maxtimeout 300000 \
+    && npm config set fetch-retry-mintimeout 30000 \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-timeout 600000 \
+    && npm ci --ignore-scripts --no-audit --no-fund \
+    && npm cache clean --force
 
 # Copiar schema do Prisma (só rebuilda se schema mudar)
 COPY prisma ./prisma/

@@ -1,0 +1,42 @@
+# Dockerfile mais leve para desenvolvimento rápido
+FROM node:18-alpine AS lite
+
+# Instalar dependências básicas
+RUN apk add --no-cache dumb-init libc6-compat
+
+# Criar usuário
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nodeuser
+
+WORKDIR /app
+
+# Copiar apenas arquivos essenciais
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Configurar npm para ser mais rápido e tolerante a falhas
+RUN npm config set registry https://registry.npmjs.org/ \
+    && npm config set fetch-retry-maxtimeout 60000 \
+    && npm config set fetch-retries 3 \
+    && npm config set fetch-timeout 300000 \
+    && npm config set audit false \
+    && npm config set fund false
+
+# Instalar apenas produção (mais rápido)
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+    && npm cache clean --force
+
+# Gerar Prisma Client
+RUN npx prisma generate
+
+# Copiar código
+COPY --chown=nodeuser:nodejs . .
+
+# Criar diretórios
+RUN mkdir -p cdn-cache logs \
+    && chown -R nodeuser:nodejs .
+
+USER nodeuser
+EXPOSE 3001
+
+CMD ["node", "server.js"]
