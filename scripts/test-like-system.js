@@ -1,25 +1,35 @@
-const { assetsAPI } = require('../../../frontend/src/services/api');
+const AssetService = require('../services/assetService');
 
 async function testLikeSystem() {
   try {
-    console.log('🧪 Testing Like System...');
+    console.log('=== Teste do Sistema de Curtidas ===');
     
-    // Simulate getting an asset details first
-    console.log('📦 Getting asset details...');
-    const assetResponse = await assetsAPI.getAsset(1);
-    console.log('Asset response:', assetResponse?.data);
+    // Buscar asset sem usuário logado
+    console.log('\n1. Buscando asset SEM usuário logado:');
+    const assetWithoutUser = await AssetService.findAssetById(25);
+    console.log(`Asset ${assetWithoutUser.id} - isLiked: ${assetWithoutUser.isLiked}`);
     
-    // Test toggling favorite
-    console.log('\n❤️ Testing toggle favorite...');
-    const favoriteResponse = await assetsAPI.toggleFavorite(1);
-    console.log('Toggle favorite response:', favoriteResponse?.data);
+    // Buscar asset COM usuário logado (usuário 11 - testuser)
+    console.log('\n2. Buscando asset COM usuário logado (ID: 11):');
+    const assetWithUser = await AssetService.findAssetById(25, 11);
+    console.log(`Asset ${assetWithUser.id} - isLiked: ${assetWithUser.isLiked}`);
     
-    console.log('\n✅ Like system test completed!');
+    // Testar toggle de favorito
+    console.log('\n3. Alternando favorito para usuário 11 no asset 25:');
+    const toggleResult = await AssetService.toggleFavorite(11, 25);
+    console.log('Resultado do toggle:', toggleResult);
+    
+    // Buscar novamente para verificar mudança
+    console.log('\n4. Verificando estado após toggle:');
+    const assetAfterToggle = await AssetService.findAssetById(25, 11);
+    console.log(`Asset ${assetAfterToggle.id} - isLiked: ${assetAfterToggle.isLiked}`);
+    console.log(`Total de favoritos: ${assetAfterToggle._count.favorites}`);
+    
   } catch (error) {
-    console.error('❌ Like system test error:', error.response?.data || error.message);
+    console.error('Erro no teste:', error);
+  } finally {
+    process.exit(0);
   }
 }
 
-// Note: This test would require authentication
-console.log('⚠️ Note: This test requires authentication and would need to be run from frontend with valid auth token.');
-console.log('📝 The APIs are implemented, test manually in the browser.');
+testLikeSystem();

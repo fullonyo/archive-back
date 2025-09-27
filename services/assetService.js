@@ -106,7 +106,7 @@ class AssetService {
   }
 
   // Buscar asset por ID com informações completas
-  static async findAssetById(id, includeInactive = false) {
+  static async findAssetById(id, userId = null, includeInactive = false) {
     const where = {
       id,
       ...(includeInactive ? {} : { isActive: true, isApproved: true })
@@ -165,6 +165,13 @@ class AssetService {
         asset.averageRating = Number((totalRating / asset.reviews.length).toFixed(1));
       } else {
         asset.averageRating = 0;
+      }
+      
+      // Check if asset is favorited by the logged user
+      if (userId) {
+        asset.isLiked = await this.isFavoritedByUser(userId, id);
+      } else {
+        asset.isLiked = false;
       }
     }
     

@@ -2,23 +2,30 @@ const UserService = require('../services/userService');
 
 async function testUserStats() {
   try {
-    console.log('🧪 Testing User Stats...');
+    console.log('=== Teste das Estatísticas do Usuário ===');
     
-    // Test getting stats for user ID 1
-    const userId = 1;
-    console.log(`\n📊 Getting stats for user ${userId}...`);
+    // Testar estatísticas do usuário 11 (testuser)
+    console.log('\n1. Estatísticas do usuário 11 (testuser):');
+    const stats = await UserService.getUserStats(11);
+    console.log('Estatísticas:', JSON.stringify(stats, null, 2));
     
-    const stats = await UserService.getUserStats(userId);
-    console.log('Stats result:', stats);
+    // Verificar detalhes das estatísticas
+    console.log('\n2. Detalhamento das estatísticas:');
+    console.log(`- Uploads: ${stats.uploadsCount} assets`);
+    console.log(`- Downloads: ${stats.totalDownloads} downloads`);
+    console.log(`- Favoritos recebidos: ${stats.favoritesReceived} curtidas nos seus assets`);
+    console.log(`- Avaliação média: ${stats.averageRating} estrelas`);
+    console.log(`- Total de reviews: ${stats.totalReviews} avaliações`);
     
-    // Test getting user by ID with stats
-    console.log(`\n👤 Getting user ${userId} with stats...`);
-    const user = await UserService.findUserById(userId);
-    console.log('User result:', user);
+    // Testar estatísticas do usuário 1 (admin/sistema)
+    console.log('\n3. Estatísticas do usuário 1 (admin):');
+    const adminStats = await UserService.getUserStats(1);
+    console.log('Estatísticas Admin:', JSON.stringify(adminStats, null, 2));
     
-    console.log('\n✅ Test completed!');
   } catch (error) {
-    console.error('❌ Test error:', error);
+    console.error('Erro no teste:', error);
+  } finally {
+    process.exit(0);
   }
 }
 
