@@ -1407,6 +1407,15 @@ router.put('/assets/:id/approve', verifyToken, requirePermission('approve_assets
     // Aprovar o asset
     await AssetService.updateApprovalStatus(assetId, true, req.user.id);
 
+    // Clear cache after approval to show updated data
+    try {
+      await AdvancedCacheService.invalidateAssetsCaches();
+      await AdvancedCacheService.invalidateCategoriesCache();
+      console.log('Cache invalidated after asset approval');
+    } catch (cacheError) {
+      console.warn('Error invalidating cache after approval:', cacheError);
+    }
+
     res.json({
       success: true,
       message: 'Asset aprovado com sucesso'
@@ -1484,6 +1493,15 @@ router.put('/assets/:id/reject', verifyToken, requirePermission('approve_assets'
       });
     }
 
+    // Clear cache after rejection to show updated data
+    try {
+      await AdvancedCacheService.invalidateAssetsCaches();
+      await AdvancedCacheService.invalidateCategoriesCache();
+      console.log('Cache invalidated after asset rejection');
+    } catch (cacheError) {
+      console.warn('Error invalidating cache after rejection:', cacheError);
+    }
+
     res.json({
       success: true,
       message: 'Asset rejeitado com sucesso'
@@ -1500,7 +1518,7 @@ router.put('/assets/:id/reject', verifyToken, requirePermission('approve_assets'
 
 /**
  * @route   DELETE /api/admin/assets/:id
- * @desc    Delete asset (Admin only) - Soft delete - USING PRISMA
+ * @desc    Delete asset (Admin only) - Hard delete - USING PRISMA
  * @access  Private (Admin)
  */
 router.delete('/assets/:id', verifyToken, requirePermission('delete_assets'), async (req, res) => {
@@ -1514,10 +1532,10 @@ router.delete('/assets/:id', verifyToken, requirePermission('delete_assets'), as
       });
     }
 
-    // Verificar se o asset existe
+    // Verificar se o asset existe antes de tentar deletar
     const asset = await prisma.asset.findUnique({
       where: { id: assetId },
-      select: { id: true, title: true, isActive: true, user: { select: { username: true } } }
+      select: { id: true, title: true, user: { select: { username: true } } }
     });
 
     if (!asset) {
@@ -1527,43 +1545,34 @@ router.delete('/assets/:id', verifyToken, requirePermission('delete_assets'), as
       });
     }
 
-    if (!asset.isActive) {
-      return res.status(400).json({
-        success: false,
-        message: 'Asset já está inativo'
-      });
+    // Permanently delete the asset using the new service method
+    const result = await AssetService.deleteAsset(assetId, req.user.id);
+
+    // Clear cache after deletion
+    try {
+      await AdvancedCacheService.invalidateAssetsCaches();
+      await AdvancedCacheService.invalidateCategoriesCache();
+      console.log('Advanced cache invalidated after asset deletion');
+    } catch (cacheError) {
+      console.warn('Error invalidating advanced cache:', cacheError);
     }
-
-    // Soft delete do asset
-    await prisma.asset.update({
-      where: { id: assetId },
-      data: { isActive: false }
-    });
-
-    // Log da ação
-    await prisma.adminLog.create({
-      data: {
-        adminId: req.user.id,
-        action: 'DELETE_ASSET',
-        targetType: 'asset',
-        targetId: assetId,
-        details: JSON.stringify({
-          assetTitle: asset.title,
-          assetOwner: asset.user.username
-        })
-      }
-    });
 
     res.json({
       success: true,
-      message: 'Asset deletado com sucesso'
+      message: 'Asset deletado permanentemente com sucesso',
+      data: {
+        deletedAsset: {
+          title: result.assetTitle,
+          fileName: result.fileName
+        }
+      }
     });
 
   } catch (error) {
     console.error('❌ Erro ao deletar asset:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro interno do servidor'
+      message: error.message || 'Erro interno do servidor'
     });
   }
 });

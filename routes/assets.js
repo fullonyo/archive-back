@@ -356,7 +356,14 @@ router.post('/', verifyToken, uploadLimiter, uploadConfigs.asset, handleMulterEr
 
     // Limpar cache após upload bem-sucedido
     console.log('Clearing assets cache after new upload');
-    cache.clear();
+    try {
+      await AdvancedCacheService.invalidateAssetsCaches();
+      await AdvancedCacheService.invalidateCategoriesCache();
+      console.log('Advanced cache invalidated successfully');
+    } catch (cacheError) {
+      console.warn('Error invalidating advanced cache, falling back to simple cache:', cacheError);
+      cache.clear();
+    }
 
     // Determinar mensagem de resposta baseada no status de aprovação
     const responseMessage = asset.isApproved 
@@ -610,11 +617,22 @@ router.delete('/:id', verifyToken, async (req, res) => {
       });
     }
 
-    await AssetService.deleteAsset(parseInt(id));
+    // Use the new deleteAsset method for permanent deletion
+    await AssetService.deleteAsset(parseInt(id), isAdminUser ? req.user.id : null);
+
+    // Clear cache after deletion
+    try {
+      await AdvancedCacheService.invalidateAssetsCaches();
+      await AdvancedCacheService.invalidateCategoriesCache();
+      console.log('Advanced cache invalidated after asset deletion');
+    } catch (cacheError) {
+      console.warn('Error invalidating advanced cache, falling back to simple cache:', cacheError);
+      cache.clear();
+    }
 
     res.json({
       success: true,
-      message: 'Asset deleted successfully'
+      message: 'Asset deleted permanently'
     });
   } catch (error) {
     console.error('Delete asset error:', error);

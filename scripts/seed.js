@@ -55,12 +55,12 @@ async function main() {
         }
       }),
       prisma.assetCategory.upsert({
-        where: { name: 'other' },
+        where: { name: 'tools-systems' },
         update: {},
         create: {
-          name: 'other',
-          description: 'Other miscellaneous assets',
-          icon: 'folder'
+          name: 'tools-systems',
+          description: 'Tools and Systems for development and utilities',
+          icon: 'wrench-screwdriver'
         }
       })
     ]);

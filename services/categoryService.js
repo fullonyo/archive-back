@@ -311,9 +311,9 @@ class CategoryService {
         icon: 'cube'
       },
       {
-        name: 'other',
-        description: 'Other miscellaneous assets',
-        icon: 'folder'
+        name: 'tools-systems',
+        description: 'Tools and Systems for development and utilities',
+        icon: 'wrench-screwdriver'
       }
     ];
 

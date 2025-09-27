@@ -604,6 +604,141 @@ class AssetService {
       throw error;
     }
   }
+
+  // Permanently delete asset (hard delete)
+  static async deleteAsset(assetId, adminId = null) {
+    return await prisma.$transaction(async (tx) => {
+      // First, fetch asset information for logging before deletion
+      const asset = await tx.asset.findUnique({
+        where: { id: assetId },
+        select: {
+          id: true,
+          title: true,
+          fileName: true,
+          googleDriveId: true,
+          user: {
+            select: {
+              id: true,
+              username: true
+            }
+          }
+        }
+      });
+
+      if (!asset) {
+        throw new Error('Asset not found');
+      }
+
+      // Delete related records in correct order due to foreign key constraints
+      
+      // Delete asset reviews
+      await tx.assetReview.deleteMany({
+        where: { assetId }
+      });
+
+      // Delete asset downloads
+      await tx.assetDownload.deleteMany({
+        where: { assetId }
+      });
+
+      // Delete user favorites
+      await tx.userFavorite.deleteMany({
+        where: { assetId }
+      });
+
+      // Delete admin logs related to this asset
+      await tx.adminLog.deleteMany({
+        where: {
+          targetType: 'asset',
+          targetId: assetId
+        }
+      });
+
+      // Finally, delete the asset itself
+      await tx.asset.delete({
+        where: { id: assetId }
+      });
+
+      // Log the deletion action if admin ID is provided
+      if (adminId) {
+        await tx.adminLog.create({
+          data: {
+            adminId,
+            action: 'HARD_DELETE_ASSET',
+            targetType: 'asset',
+            targetId: assetId,
+            details: JSON.stringify({
+              assetTitle: asset.title,
+              fileName: asset.fileName,
+              googleDriveId: asset.googleDriveId,
+              assetOwner: asset.user.username,
+              deletionType: 'permanent'
+            })
+          }
+        });
+      }
+
+      return {
+        success: true,
+        assetTitle: asset.title,
+        fileName: asset.fileName,
+        googleDriveId: asset.googleDriveId
+      };
+    });
+  }
+
+  // Soft delete asset (keep in database but mark inactive)
+  static async softDeleteAsset(assetId, adminId = null) {
+    return await prisma.$transaction(async (tx) => {
+      // Fetch asset information for logging
+      const asset = await tx.asset.findUnique({
+        where: { id: assetId },
+        select: {
+          id: true,
+          title: true,
+          isActive: true,
+          user: {
+            select: {
+              username: true
+            }
+          }
+        }
+      });
+
+      if (!asset) {
+        throw new Error('Asset not found');
+      }
+
+      if (!asset.isActive) {
+        throw new Error('Asset is already inactive');
+      }
+
+      // Soft delete by marking as inactive
+      const updatedAsset = await tx.asset.update({
+        where: { id: assetId },
+        data: { isActive: false }
+      });
+
+      // Log the action if admin ID is provided
+      if (adminId) {
+        await tx.adminLog.create({
+          data: {
+            adminId,
+            action: 'SOFT_DELETE_ASSET',
+            targetType: 'asset',
+            targetId: assetId,
+            details: JSON.stringify({
+              assetTitle: asset.title,
+              assetOwner: asset.user.username,
+              deletionType: 'soft'
+            })
+          }
+        });
+      }
+
+      return updatedAsset;
+    });
+  }
 }
 
 module.exports = AssetService;

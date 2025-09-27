@@ -343,7 +343,7 @@ function removeDuplicateCategories(categories) {
     'world': ['world', 'worlds'],
     'props': ['props'],
     'shader': ['shader'],
-    'other': ['other']
+    'tools-systems': ['tools-systems', 'tools', 'systems']
   };
   
   // Create reverse mapping
