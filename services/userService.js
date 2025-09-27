@@ -240,8 +240,6 @@ class UserService {
         _count: {
           select: {
             assets: { where: { isActive: true } },
-            downloads: true,
-            favorites: true,
             reviews: true
           }
         },
@@ -249,6 +247,11 @@ class UserService {
           where: { isActive: true },
           select: {
             downloadCount: true,
+            _count: {
+              select: {
+                favorites: true // Curtidas recebidas em cada asset
+              }
+            },
             reviews: {
               where: { isApproved: true },
               select: { rating: true }
@@ -272,14 +275,17 @@ class UserService {
     });
 
     const averageRating = totalReviews > 0 ? totalRating / totalReviews : 0;
+    
+    // Calcular totais
     const totalDownloads = stats.assets.reduce((sum, asset) => sum + asset.downloadCount, 0);
+    const totalFavorites = stats.assets.reduce((sum, asset) => sum + asset._count.favorites, 0); // Curtidas recebidas nos assets
 
     return {
       totalUploads: stats._count.assets,
       totalDownloads,
-      totalFavorites: stats._count.favorites,
+      totalFavorites, // Curtidas recebidas
       totalReviews: totalReviews,
-      averageRating: Number(averageRating.toFixed(2))
+      averageRating: Number(averageRating.toFixed(1))
     };
   }
 

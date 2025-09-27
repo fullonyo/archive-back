@@ -158,6 +158,14 @@ class AssetService {
     if (asset) {
       asset.tags = normalizeTags(asset.tags); // Normalize tags to always be an array
       asset.imageUrls = normalizeImageUrls(asset.imageUrls); // Normalize imageUrls to always be an array
+      
+      // Calculate average rating from reviews
+      if (asset.reviews && asset.reviews.length > 0) {
+        const totalRating = asset.reviews.reduce((sum, review) => sum + review.rating, 0);
+        asset.averageRating = Number((totalRating / asset.reviews.length).toFixed(1));
+      } else {
+        asset.averageRating = 0;
+      }
     }
     
     return convertBigIntToNumber(asset);
@@ -366,6 +374,95 @@ class AssetService {
       }
     });
     return !!favorite;
+  }
+
+  // Adicionar/atualizar review
+  static async createOrUpdateReview(reviewData) {
+    const { userId, assetId, rating, comment } = reviewData;
+    
+    const existingReview = await prisma.assetReview.findUnique({
+      where: {
+        unique_user_asset_review: {
+          userId,
+          assetId
+        }
+      }
+    });
+
+    const isUpdate = !!existingReview;
+
+    const review = await prisma.assetReview.upsert({
+      where: {
+        unique_user_asset_review: {
+          userId,
+          assetId
+        }
+      },
+      update: {
+        rating,
+        comment,
+        updatedAt: new Date()
+      },
+      create: {
+        userId,
+        assetId,
+        rating,
+        comment
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true
+          }
+        }
+      }
+    });
+
+    return { review: convertBigIntToNumber(review), isUpdate };
+  }
+
+  // Buscar reviews de um asset
+  static async getAssetReviews(assetId, { page = 1, limit = 20 } = {}) {
+    const skip = (page - 1) * limit;
+
+    const [reviews, total] = await Promise.all([
+      prisma.assetReview.findMany({
+        where: {
+          assetId,
+          isApproved: true
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit
+      }),
+      prisma.assetReview.count({
+        where: {
+          assetId,
+          isApproved: true
+        }
+      })
+    ]);
+
+    return convertBigIntToNumber({
+      reviews,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
   }
 
   // Adicionar review
