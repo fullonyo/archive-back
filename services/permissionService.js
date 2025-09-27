@@ -1,4 +1,4 @@
-const { PrismaClient } = require('../generated/prisma')
+const { PrismaClient } = require('@prisma/client')
 const { createAdminLog } = require('./adminLogService')
 
 const prisma = new PrismaClient()

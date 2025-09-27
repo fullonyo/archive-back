@@ -7,7 +7,7 @@ const permissionService = require('../services/permissionService');
 const userService = require('../services/userService');
 const { PERMISSION_LEVELS } = require('../services/permissionService');
 const { AdminLogService } = require('../services/adminLogService');
-const { PrismaClient } = require('../generated/prisma');
+const { PrismaClient } = require('@prisma/client');
 const AssetService = require('../services/assetService');
 
 // Importar cache service para padronização
