@@ -288,6 +288,13 @@ router.get('/assets', optionalAuth, validateQuery(querySchemas.pagination), asyn
       includeInactive: shouldIncludeInactive
     });
 
+    // Disable cache for user assets to ensure fresh approval status
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+
     res.json({
       success: true,
       data: convertBigIntToNumber(result)
