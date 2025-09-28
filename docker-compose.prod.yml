@@ -10,10 +10,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d/vrchieve-prod.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/conf.d/cache-security.conf:/etc/nginx/conf.d/cache-security.conf:ro
-      - ./nginx/conf.d/monitoring.conf:/etc/nginx/conf.d/monitoring.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
       - backend-cdn-cache:/var/www/cdn-cache:ro
       - nginx-logs:/var/log/nginx
       - nginx-cache:/var/cache/nginx
