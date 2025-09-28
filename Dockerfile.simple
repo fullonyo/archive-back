@@ -10,8 +10,9 @@ RUN addgroup --system --gid 1001 nodejs \
 
 WORKDIR /app
 
-# Copiar tudo de uma vez (pior para cache, melhor para rede instável)
-COPY . .
+# Copiar arquivos de package primeiro
+COPY package.json package-lock.json ./
+COPY prisma ./prisma/
 
 # Configurar npm para ser mais tolerante
 RUN npm config set registry https://registry.npmjs.org/ \
@@ -22,18 +23,19 @@ RUN npm config set registry https://registry.npmjs.org/ \
 # Tentar instalar com fallbacks
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund || \
     npm install --omit=dev --ignore-scripts --no-audit --no-fund || \
-    (npm cache clean --force && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
+    (npm cache clean --force && npm install --production --ignore-scripts --no-audit --no-fund)
 
 # Gerar Prisma
 RUN npx prisma generate || echo "Prisma generation failed, continuing..."
 
-# Limpar
-RUN npm cache clean --force
+# Copiar resto do código
+COPY . .
 
-# Permissões
-RUN chown -R nodeuser:nodejs . \
-    && mkdir -p cdn-cache logs \
-    && chown -R nodeuser:nodejs cdn-cache logs
+# Limpar e ajustar permissões
+RUN npm cache clean --force && \
+    chown -R nodeuser:nodejs . && \
+    mkdir -p cdn-cache logs && \
+    chown -R nodeuser:nodejs cdn-cache logs
 
 USER nodeuser
 EXPOSE 3001

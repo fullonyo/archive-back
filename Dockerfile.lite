@@ -11,7 +11,7 @@ RUN addgroup --system --gid 1001 nodejs \
 WORKDIR /app
 
 # Copiar apenas arquivos essenciais
-COPY package*.json ./
+COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 
 # Configurar npm para ser mais rápido e tolerante a falhas

@@ -1,0 +1,32 @@
+# Dockerfile mais básico possível para resolver problema de rede
+FROM node:18-alpine
+
+# Instalar dependências do sistema
+RUN apk add --no-cache dumb-init libc6-compat
+
+WORKDIR /app
+
+# Copiar todos os arquivos (mais simples)
+COPY . .
+
+# Instalar dependências com npm install (mais tolerante que npm ci)
+RUN npm config set fetch-retry-maxtimeout 300000 && \
+    npm config set fetch-retries 10 && \
+    npm config set fetch-timeout 600000 && \
+    npm install --production --ignore-scripts --no-audit --no-fund && \
+    npm cache clean --force
+
+# Tentar gerar Prisma Client
+RUN npx prisma generate || echo "Prisma failed, continuing..."
+
+# Criar usuário e ajustar permissões
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nodeuser && \
+    chown -R nodeuser:nodejs /app && \
+    mkdir -p /app/cdn-cache /app/logs && \
+    chown -R nodeuser:nodejs /app/cdn-cache /app/logs
+
+USER nodeuser
+EXPOSE 3001
+
+CMD ["node", "server.js"]
