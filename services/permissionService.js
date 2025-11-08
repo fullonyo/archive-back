@@ -250,12 +250,21 @@ class PermissionService {
   // Listar usuários com suas permissões
   async getUsersWithPermissions(filters = {}) {
     try {
-      const { role, page = 1, limit = 20 } = filters
+      const { role, search, page = 1, limit = 20 } = filters
       const offset = (page - 1) * limit
 
       const where = { isActive: true }
+      
       if (role && role !== 'all') {
         where.role = role
+      }
+
+      // Add search filter
+      if (search) {
+        where.OR = [
+          { username: { contains: search } },
+          { email: { contains: search } }
+        ]
       }
 
       const [users, total] = await Promise.all([

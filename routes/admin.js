@@ -76,19 +76,19 @@ router.get('/permissions/me', verifyToken, async (req, res) => {
         'manage_users', 'approve_users', 'ban_users', 'view_user_details',
         'manage_assets', 'approve_assets', 'delete_assets', 'moderate_assets',
         'manage_categories', 'create_categories', 'delete_categories',
-        'manage_permissions', 'view_admin_panel', 'view_analytics', 'manage_settings',
+        'manage_permissions', 'view_admin_panel', 'view_analytics', 'view_stats', 'manage_settings',
         'upload_assets', 'upload_premium', 'moderate_comments', 'moderate_reports'
       ],
       ADMIN: [
         'manage_users', 'approve_users', 'ban_users', 'view_user_details',
         'manage_assets', 'approve_assets', 'delete_assets', 'moderate_assets',
         'manage_categories', 'create_categories', 'delete_categories',
-        'view_admin_panel', 'view_analytics', 'manage_settings',
+        'view_admin_panel', 'view_analytics', 'view_stats', 'manage_settings',
         'upload_assets', 'upload_premium', 'moderate_comments', 'moderate_reports'
       ],
       MODERATOR: [
         'view_user_details', 'moderate_assets', 'approve_assets',
-        'view_admin_panel', 'upload_assets', 'moderate_comments', 'moderate_reports'
+        'view_admin_panel', 'view_analytics', 'view_stats', 'upload_assets', 'moderate_comments', 'moderate_reports'
       ],
       CREATOR: ['upload_assets', 'upload_premium'],
       USER: ['upload_assets']
@@ -358,6 +358,8 @@ router.get('/users', verifyToken, requirePermission('view_user_details'), async 
   try {
     const { role, page = 1, limit = 20, search } = req.query;
     
+    console.log('📋 GET /users - Params:', { role, page, limit, search });
+    
     const result = await permissionService.getUsersWithPermissions({
       role,
       search,
@@ -365,9 +367,37 @@ router.get('/users', verifyToken, requirePermission('view_user_details'), async 
       limit: parseInt(limit)
     });
 
+    console.log('✅ Users loaded:', result.users.length, 'Total:', result.pagination.total);
+
+    // Calculate stats - need to query all users for accurate stats, not just current page
+    const [totalUsers, activeUsers, bannedUsers, pendingRequests] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.user.count({ where: { isActive: false } }),
+      prisma.userAccessRequest.count({ where: { status: 'PENDING' } })
+    ]);
+
+    const moderators = await prisma.user.count({ 
+      where: { 
+        role: { in: ['MODERATOR', 'ADMIN', 'SISTEMA'] }
+      } 
+    });
+
+    const hasMore = result.pagination.page < result.pagination.totalPages;
+
     res.json({
       success: true,
-      data: result.users,
+      data: {
+        users: result.users,
+        stats: {
+          total: totalUsers,
+          active: activeUsers,
+          banned: bannedUsers,
+          pending: pendingRequests,
+          moderators: moderators
+        },
+        hasMore
+      },
       pagination: result.pagination
     });
 
@@ -1573,6 +1603,518 @@ router.delete('/assets/:id', verifyToken, requirePermission('delete_assets'), as
     res.status(500).json({
       success: false,
       message: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// ===== ANALYTICS ROUTES =====
+
+/**
+ * @route   GET /api/admin/analytics/overview
+ * @desc    Get analytics overview data
+ * @access  Private (Admin/Moderator with view_analytics permission)
+ */
+router.get('/analytics/overview', verifyToken, requirePermission('view_analytics'), async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // Get total stats
+    const [totalUsers, totalAssets, totalDownloads] = await Promise.all([
+      prisma.user.count(),
+      prisma.asset.count({ where: { isApproved: true } }),
+      prisma.asset.aggregate({
+        _sum: { downloadCount: true },
+        where: { isApproved: true }
+      })
+    ]);
+
+    // Get growth data (compare with previous period)
+    const periodDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    const previousStart = new Date(start.getTime() - periodDays * 24 * 60 * 60 * 1000);
+
+    const [newUsers, newAssets, previousUsers, previousAssets] = await Promise.all([
+      prisma.user.count({ where: { createdAt: { gte: start, lte: end } } }),
+      prisma.asset.count({ where: { createdAt: { gte: start, lte: end }, isApproved: true } }),
+      prisma.user.count({ where: { createdAt: { gte: previousStart, lt: start } } }),
+      prisma.asset.count({ where: { createdAt: { gte: previousStart, lt: start }, isApproved: true } })
+    ]);
+
+    const userGrowth = previousUsers > 0 ? ((newUsers - previousUsers) / previousUsers * 100) : 0;
+    const assetGrowth = previousAssets > 0 ? ((newAssets - previousAssets) / previousAssets * 100) : 0;
+
+    // Get chart data - User growth (last 30 days)
+    const userGrowthData = await prisma.$queryRaw`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM users
+      WHERE created_at >= ${start} AND created_at <= ${end}
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `;
+
+    // Get chart data - Asset uploads
+    const assetUploadsData = await prisma.$queryRaw`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM assets
+      WHERE created_at >= ${start} AND created_at <= ${end} AND is_approved = true
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `;
+
+    // Get category distribution
+    const categoryDistribution = await prisma.asset.groupBy({
+      by: ['categoryId'],
+      where: { isApproved: true },
+      _count: { id: true }
+    });
+
+    const categoryData = await Promise.all(
+      categoryDistribution.map(async (item) => {
+        const category = await prisma.assetCategory.findUnique({
+          where: { id: item.categoryId },
+          select: { name: true }
+        });
+        return {
+          name: category?.name || 'Unknown',
+          count: item._count.id
+        };
+      })
+    );
+
+    // Get downloads over time (using assets created date as proxy)
+    const downloadsData = await prisma.$queryRaw`
+      SELECT DATE(created_at) as date, SUM(download_count) as total
+      FROM assets
+      WHERE created_at >= ${start} AND created_at <= ${end} AND is_approved = true
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `;
+
+    // Format dates for charts
+    const formatDate = (date) => {
+      const d = new Date(date);
+      return `${d.getDate()}/${d.getMonth() + 1}`;
+    };
+
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          totalUsers,
+          totalAssets,
+          totalDownloads: Number(totalDownloads._sum.downloadCount) || 0,
+          engagementRate: 68.5 // Placeholder - calculate based on active users
+        },
+        growth: {
+          users: Math.round(userGrowth * 10) / 10,
+          assets: Math.round(assetGrowth * 10) / 10,
+          downloads: 15.2, // Placeholder
+          engagement: 2.1 // Placeholder
+        },
+        chartData: {
+          userGrowth: {
+            labels: userGrowthData.map(d => formatDate(d.date)),
+            data: userGrowthData.map(d => Number(d.count))
+          },
+          assetUploads: {
+            labels: assetUploadsData.map(d => formatDate(d.date)),
+            data: assetUploadsData.map(d => Number(d.count))
+          },
+          categoryDistribution: {
+            labels: categoryData.map(c => c.name),
+            data: categoryData.map(c => c.count)
+          },
+          downloads: {
+            labels: downloadsData.map(d => formatDate(d.date)),
+            data: downloadsData.map(d => Number(d.total) || 0)
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Analytics overview error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar analytics overview'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/admin/analytics/users
+ * @desc    Get user analytics data
+ * @access  Private (Admin/Moderator with view_analytics permission)
+ */
+router.get('/analytics/users', verifyToken, requirePermission('view_analytics'), async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // Get user stats
+    const [newUsers, activeUsers, creators, totalUsers] = await Promise.all([
+      prisma.user.count({ where: { createdAt: { gte: start, lte: end } } }),
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.user.count({ where: { role: { in: ['CREATOR', 'ADMIN', 'MODERATOR'] } } }),
+      prisma.user.count()
+    ]);
+
+    // Calculate retention rate (active users / total users)
+    const retentionRate = totalUsers > 0 ? (activeUsers / totalUsers * 100) : 0;
+
+    // Get registration trend
+    const registrationsData = await prisma.$queryRaw`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM users
+      WHERE created_at >= ${start} AND created_at <= ${end}
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `;
+
+    // Get user activity (users who created assets)
+    const activityData = await prisma.$queryRaw`
+      SELECT DATE(a.created_at) as date, COUNT(DISTINCT a.user_id) as count
+      FROM assets a
+      WHERE a.created_at >= ${start} AND a.created_at <= ${end}
+      GROUP BY DATE(a.created_at)
+      ORDER BY date ASC
+    `;
+
+    // Get user types distribution
+    const userTypesData = await prisma.user.groupBy({
+      by: ['role'],
+      _count: { id: true }
+    });
+
+    // Format dates
+    const formatDate = (date) => {
+      const d = new Date(date);
+      return `${d.getDate()}/${d.getMonth() + 1}`;
+    };
+
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          newUsers,
+          activeUsers,
+          creators,
+          retentionRate: Math.round(retentionRate * 10) / 10
+        },
+        chartData: {
+          registrations: {
+            labels: registrationsData.map(d => formatDate(d.date)),
+            data: registrationsData.map(d => Number(d.count))
+          },
+          activity: {
+            labels: activityData.map(d => formatDate(d.date)),
+            data: activityData.map(d => Number(d.count))
+          },
+          userTypes: {
+            labels: userTypesData.map(d => d.role),
+            data: userTypesData.map(d => d._count.id)
+          },
+          engagement: {
+            labels: registrationsData.map(d => formatDate(d.date)),
+            data: registrationsData.map(() => Math.random() * 100) // Placeholder
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('User analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar analytics de usuários'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/admin/analytics/assets
+ * @desc    Get asset analytics data
+ * @access  Private (Admin/Moderator with view_analytics permission)
+ */
+router.get('/analytics/assets', verifyToken, requirePermission('view_analytics'), async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // Get asset stats
+    const [newAssets, totalDownloads, avgDownloadsResult, totalAssets, approvedAssets] = await Promise.all([
+      prisma.asset.count({ where: { createdAt: { gte: start, lte: end }, isApproved: true } }),
+      prisma.asset.aggregate({
+        _sum: { downloadCount: true },
+        where: { isApproved: true }
+      }),
+      prisma.asset.aggregate({
+        _avg: { downloadCount: true },
+        where: { isApproved: true }
+      }),
+      prisma.asset.count(),
+      prisma.asset.count({ where: { isApproved: true } })
+    ]);
+
+    const approvalRate = totalAssets > 0 ? (approvedAssets / totalAssets * 100) : 0;
+
+    // Get upload trend
+    const uploadsData = await prisma.$queryRaw`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM assets
+      WHERE created_at >= ${start} AND created_at <= ${end} AND is_approved = true
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `;
+
+    // Get downloads trend (using download count changes over time - simplified)
+    const downloadsData = await prisma.$queryRaw`
+      SELECT DATE(created_at) as date, SUM(download_count) as total
+      FROM assets
+      WHERE created_at >= ${start} AND created_at <= ${end} AND is_approved = true
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `;
+
+    // Get category performance
+    const categoryPerformance = await prisma.$queryRaw`
+      SELECT c.name, SUM(a.download_count) as downloads
+      FROM assets a
+      JOIN asset_categories c ON a.category_id = c.id
+      WHERE a.is_approved = true
+      GROUP BY c.id, c.name
+      ORDER BY downloads DESC
+      LIMIT 10
+    `;
+
+    // Get status distribution
+    const [approved, pending, rejected] = await Promise.all([
+      prisma.asset.count({ where: { isApproved: true, isActive: true } }),
+      prisma.asset.count({ where: { isApproved: false, isActive: true } }),
+      prisma.asset.count({ where: { isActive: false } })
+    ]);
+
+    // Format dates
+    const formatDate = (date) => {
+      const d = new Date(date);
+      return `${d.getDate()}/${d.getMonth() + 1}`;
+    };
+
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          newAssets,
+          totalDownloads: Number(totalDownloads._sum.downloadCount) || 0,
+          avgDownloads: Math.round((avgDownloadsResult._avg.downloadCount || 0) * 10) / 10,
+          approvalRate: Math.round(approvalRate * 10) / 10
+        },
+        chartData: {
+          uploads: {
+            labels: uploadsData.map(d => formatDate(d.date)),
+            data: uploadsData.map(d => Number(d.count))
+          },
+          downloads: {
+            labels: downloadsData.map(d => formatDate(d.date)),
+            data: downloadsData.map(d => Number(d.total) || 0)
+          },
+          categoryPerformance: {
+            labels: categoryPerformance.map(c => c.name),
+            data: categoryPerformance.map(c => Number(c.downloads) || 0)
+          },
+          statusDistribution: {
+            labels: ['Aprovado', 'Pendente', 'Rejeitado'],
+            data: [approved, pending, rejected]
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Asset analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar analytics de assets'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/admin/analytics/top/:type
+ * @desc    Get top lists (creators, assets, categories)
+ * @access  Private (Admin/Moderator with view_analytics permission)
+ */
+router.get('/analytics/top/:type', verifyToken, requirePermission('view_analytics'), async (req, res) => {
+  try {
+    const { type } = req.params;
+    const { limit = 10, startDate, endDate } = req.query;
+    
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    let data = [];
+
+    if (type === 'creators') {
+      // Top creators by total downloads
+      const topCreators = await prisma.$queryRaw`
+        SELECT 
+          u.id,
+          u.username,
+          COUNT(DISTINCT a.id) as assetsCount,
+          COALESCE(SUM(a.download_count), 0) as totalDownloads,
+          COALESCE(AVG(r.rating), 0) as avgRating
+        FROM users u
+        LEFT JOIN assets a ON u.id = a.user_id AND a.is_approved = true
+        LEFT JOIN asset_reviews r ON a.id = r.asset_id
+        WHERE a.id IS NOT NULL
+        GROUP BY u.id, u.username
+        ORDER BY totalDownloads DESC
+        LIMIT ${parseInt(limit)}
+      `;
+
+      data = topCreators.map((creator, index) => ({
+        rank: index + 1,
+        username: creator.username,
+        assetsCount: Number(creator.assetsCount),
+        totalDownloads: Number(creator.totalDownloads),
+        avgRating: Math.round(Number(creator.avgRating) * 10) / 10
+      }));
+
+    } else if (type === 'assets') {
+      // Top assets by downloads
+      const topAssets = await prisma.$queryRaw`
+        SELECT 
+          a.id,
+          a.title,
+          c.name as category,
+          a.download_count,
+          COALESCE(AVG(r.rating), 0) as rating
+        FROM assets a
+        JOIN asset_categories c ON a.category_id = c.id
+        LEFT JOIN asset_reviews r ON a.id = r.asset_id
+        WHERE a.is_approved = true
+        GROUP BY a.id, a.title, c.name, a.download_count
+        ORDER BY a.download_count DESC
+        LIMIT ${parseInt(limit)}
+      `;
+
+      data = topAssets.map((asset, index) => ({
+        rank: index + 1,
+        title: asset.title,
+        category: asset.category,
+        downloads: Number(asset.download_count),
+        rating: Math.round(Number(asset.rating) * 10) / 10
+      }));
+
+    } else if (type === 'categories') {
+      // Top categories by total downloads
+      const topCategories = await prisma.$queryRaw`
+        SELECT 
+          c.id,
+          c.name,
+          COUNT(DISTINCT a.id) as assetsCount,
+          COALESCE(SUM(a.download_count), 0) as totalDownloads,
+          COALESCE(AVG(r.rating), 0) as avgRating
+        FROM asset_categories c
+        LEFT JOIN assets a ON c.id = a.category_id AND a.is_approved = true
+        LEFT JOIN asset_reviews r ON a.id = r.asset_id
+        WHERE a.id IS NOT NULL
+        GROUP BY c.id, c.name
+        ORDER BY totalDownloads DESC
+        LIMIT ${parseInt(limit)}
+      `;
+
+      data = topCategories.map((category, index) => ({
+        rank: index + 1,
+        name: category.name,
+        assetsCount: Number(category.assetsCount),
+        totalDownloads: Number(category.totalDownloads),
+        avgRating: Math.round(Number(category.avgRating) * 10) / 10
+      }));
+
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Tipo inválido. Use: creators, assets ou categories'
+      });
+    }
+
+    res.json({
+      success: true,
+      data
+    });
+
+  } catch (error) {
+    console.error('Top lists error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar top lists'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/admin/analytics/export/:format
+ * @desc    Export analytics data (CSV or PDF)
+ * @access  Private (Admin/Moderator with view_analytics permission)
+ */
+router.get('/analytics/export/:format', verifyToken, requirePermission('view_analytics'), async (req, res) => {
+  try {
+    const { format } = req.params;
+    const { startDate, endDate, subtab } = req.query;
+
+    if (format !== 'csv' && format !== 'pdf') {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato inválido. Use: csv ou pdf'
+      });
+    }
+
+    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // For CSV export
+    if (format === 'csv') {
+      let csvData = '';
+      
+      if (subtab === 'overview' || !subtab) {
+        // Get overview data
+        const [totalUsers, totalAssets, totalDownloads] = await Promise.all([
+          prisma.user.count(),
+          prisma.asset.count({ where: { isApproved: true } }),
+          prisma.asset.aggregate({ _sum: { downloads: true }, where: { isApproved: true } })
+        ]);
+
+        csvData = 'Metric,Value\n';
+        csvData += `Total Users,${totalUsers}\n`;
+        csvData += `Total Assets,${totalAssets}\n`;
+        csvData += `Total Downloads,${totalDownloads._sum.downloads || 0}\n`;
+        csvData += `Export Date,${new Date().toISOString()}\n`;
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="analytics-${subtab || 'overview'}-${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvData);
+
+    } else {
+      // PDF export - simplified version
+      res.status(501).json({
+        success: false,
+        message: 'PDF export não implementado ainda'
+      });
+    }
+
+  } catch (error) {
+    console.error('Export analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao exportar analytics'
     });
   }
 });
