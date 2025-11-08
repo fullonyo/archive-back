@@ -76,6 +76,95 @@ function normalizeImageUrls(imageUrls) {
   return [];
 }
 
+// Helper function to extract Google Drive file ID from various URL formats
+function extractGoogleDriveId(url) {
+  if (!url || typeof url !== 'string') return null;
+  
+  // Pattern 1: https://drive.google.com/file/d/FILE_ID/view
+  const pattern1 = /\/file\/d\/([a-zA-Z0-9_-]+)/;
+  const match1 = url.match(pattern1);
+  if (match1) return match1[1];
+  
+  // Pattern 2: https://drive.google.com/uc?id=FILE_ID
+  // Pattern 3: https://drive.google.com/uc?export=download&id=FILE_ID
+  // Pattern 4: https://drive.google.com/uc?export=view&id=FILE_ID
+  const pattern2 = /[?&]id=([a-zA-Z0-9_-]+)/;
+  const match2 = url.match(pattern2);
+  if (match2) return match2[1];
+  
+  // Pattern 5: https://drive.google.com/thumbnail?id=FILE_ID&sz=w400
+  const pattern3 = /thumbnail\?id=([a-zA-Z0-9_-]+)/;
+  const match3 = url.match(pattern3);
+  if (match3) return match3[1];
+  
+  // Pattern 6: https://drive.google.com/open?id=FILE_ID
+  const pattern4 = /open\?id=([a-zA-Z0-9_-]+)/;
+  const match4 = url.match(pattern4);
+  if (match4) return match4[1];
+  
+  // Pattern 7: https://lh3.googleusercontent.com/d/FILE_ID
+  const pattern5 = /googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/;
+  const match5 = url.match(pattern5);
+  if (match5) return match5[1];
+  
+  // If it looks like a direct ID (no URL format)
+  if (/^[a-zA-Z0-9_-]{25,}$/.test(url)) {
+    return url;
+  }
+  
+  return null;
+}
+
+// Helper function to generate proper Google Drive thumbnail URL
+function getProperThumbnailUrl(asset) {
+  let fileId = null;
+  
+  // Priority 1: Try to extract ID from thumbnailUrl if it exists
+  if (asset.thumbnailUrl) {
+    fileId = extractGoogleDriveId(asset.thumbnailUrl);
+    // If thumbnailUrl is already in thumbnail format and valid, return as-is
+    if (fileId && asset.thumbnailUrl.includes('thumbnail?id=')) {
+      return asset.thumbnailUrl;
+    }
+  }
+  
+  // Priority 2: Try to extract ID from googleDriveUrl
+  if (!fileId && asset.googleDriveUrl) {
+    fileId = extractGoogleDriveId(asset.googleDriveUrl);
+  }
+  
+  // Priority 3: Use googleDriveId directly
+  if (!fileId && asset.googleDriveId) {
+    fileId = extractGoogleDriveId(asset.googleDriveId);
+  }
+  
+  // Priority 4: Try to extract from first imageUrl
+  if (!fileId && asset.imageUrls) {
+    const images = normalizeImageUrls(asset.imageUrls);
+    if (images.length > 0) {
+      fileId = extractGoogleDriveId(images[0]);
+      // If no ID extracted but valid URL, return the URL
+      if (!fileId && images[0] && !images[0].includes('test_') && !images[0].includes('placeholder')) {
+        return images[0];
+      }
+    }
+  }
+  
+  // If we found a valid file ID, construct the thumbnail URL
+  if (fileId && !fileId.includes('test_') && !fileId.includes('placeholder')) {
+    const thumbnailUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+    
+    // Use proxy URL for better compatibility (bypasses CORS and authentication issues)
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+    const proxyUrl = `${backendUrl}/api/proxy/image?url=${encodeURIComponent(thumbnailUrl)}`;
+    
+    return proxyUrl;
+  }
+  
+  // Fallback to null (frontend will use placeholder)
+  return null;
+}
+
 /**
  * Asset Service - Todas as operações relacionadas a assets
  */
@@ -158,6 +247,7 @@ class AssetService {
     if (asset) {
       asset.tags = normalizeTags(asset.tags); // Normalize tags to always be an array
       asset.imageUrls = normalizeImageUrls(asset.imageUrls); // Normalize imageUrls to always be an array
+      asset.thumbnailUrl = getProperThumbnailUrl(asset); // Fix thumbnail URL
       
       // Calculate average rating from reviews
       if (asset.reviews && asset.reviews.length > 0) {
@@ -200,7 +290,7 @@ class AssetService {
     let orderByDirection = sortOrder;
     
     // Mapear aliases para campos reais
-    if (sortBy === 'newest') {
+    if (sortBy === 'newest' || sortBy === 'latest') {
       orderByField = 'createdAt';
       orderByDirection = 'desc';
     } else if (sortBy === 'oldest') {
@@ -209,9 +299,16 @@ class AssetService {
     } else if (sortBy === 'popular' || sortBy === 'downloads') {
       orderByField = 'downloadCount';
       orderByDirection = 'desc';
+    } else if (sortBy === 'trending') {
+      // Trending = mais downloads recentemente
+      orderByField = 'downloadCount';
+      orderByDirection = 'desc';
     } else if (sortBy === 'name') {
       orderByField = 'title';
       orderByDirection = 'asc';
+    } else if (sortBy === 'createdAt') {
+      // Já está correto
+      orderByField = 'createdAt';
     }
     
     const where = {
@@ -301,6 +398,7 @@ class AssetService {
       ...asset,
       tags: normalizeTags(asset.tags),
       imageUrls: normalizeImageUrls(asset.imageUrls),
+      thumbnailUrl: getProperThumbnailUrl(asset),
       averageRating: reviewsMap.get(asset.id)?.averageRating || 0,
       reviewCount: reviewsMap.get(asset.id)?.reviewCount || 0
     }));
