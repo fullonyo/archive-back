@@ -133,6 +133,69 @@ class UserService {
     });
   }
 
+  // ✅ OTIMIZADO: Buscar usuário por username com stats em UMA query
+  static async findUserByUsernameWithStats(username) {
+    const user = await prisma.user.findUnique({
+      where: { username },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        accountType: true,
+        avatarUrl: true,
+        bannerUrl: true,
+        bio: true,
+        country: true,
+        city: true,
+        socialLinks: true,
+        isVerified: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        lastLogin: true,
+        // Include counts em uma única query
+        _count: {
+          select: {
+            assets: { where: { isActive: true } },
+            downloads: true,
+            favorites: true,
+            reviews: true
+          }
+        }
+      }
+    });
+
+    if (!user) return null;
+
+    // Transformar _count em stats
+    const { _count, ...userData } = user;
+    const userWithStats = {
+      ...userData,
+      stats: {
+        totalUploads: _count.assets,
+        totalDownloads: _count.downloads,
+        totalFavorites: _count.favorites,
+        totalReviews: _count.reviews
+      }
+    };
+
+    // Normalizar URLs e parsear socialLinks
+    const normalizedUser = UserService.normalizeUserUrls(userWithStats);
+    
+    // Parse socialLinks JSON
+    if (normalizedUser.socialLinks && typeof normalizedUser.socialLinks === 'string') {
+      try {
+        normalizedUser.socialLinks = JSON.parse(normalizedUser.socialLinks);
+      } catch (error) {
+        console.warn('Failed to parse socialLinks:', error);
+        normalizedUser.socialLinks = null;
+      }
+    }
+
+    return normalizedUser;
+  }
+
   // Verificar se email existe
   static async emailExists(email) {
     const user = await prisma.user.findUnique({

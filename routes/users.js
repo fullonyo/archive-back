@@ -513,13 +513,14 @@ router.get('/top-rating', async (req, res) => {
   }
 });
 
-// Get user by username - USING PRISMA
+// Get user by username - USING PRISMA (OPTIMIZED - Single Query)
 router.get('/username/:username', optionalAuth, async (req, res) => {
   try {
     const { username } = req.params;
     
-    // Find user by username
-    const user = await UserService.findUserByUsername(username);
+    // ✅ OTIMIZADO: Uma única query com include
+    const user = await UserService.findUserByUsernameWithStats(username);
+    
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -527,16 +528,9 @@ router.get('/username/:username', optionalAuth, async (req, res) => {
       });
     }
 
-    // Get user stats
-    const stats = await UserService.getUserStats(user.id);
-    
-    // Get full user data with all fields
-    const fullUser = await UserService.findUserById(user.id);
-    const userWithStats = { ...fullUser, stats };
-
     res.json({
       success: true,
-      data: convertBigIntToNumber(userWithStats)
+      data: convertBigIntToNumber(user)
     });
   } catch (error) {
     console.error('Get user by username error:', error);
