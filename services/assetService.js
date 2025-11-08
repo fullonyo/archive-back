@@ -941,6 +941,65 @@ class AssetService {
       return updatedAsset;
     });
   }
+
+  // Update asset approval status (admin action)
+  static async updateAssetApproval(assetId, isApproved, adminId = null) {
+    try {
+      // Update asset approval status
+      const updatedAsset = await prisma.asset.update({
+        where: { id: assetId },
+        data: { 
+          isApproved: isApproved
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          },
+          category: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      // Invalidate caches
+      const AdvancedCacheService = require('./advancedCacheService');
+      await AdvancedCacheService.invalidateAssetsCaches();
+
+      // Log admin action if adminId provided
+      if (adminId) {
+        try {
+          await prisma.adminLog.create({
+            data: {
+              adminId,
+              action: isApproved ? 'APPROVE_ASSET' : 'REJECT_ASSET',
+              targetType: 'asset',
+              targetId: assetId,
+              details: JSON.stringify({
+                assetTitle: updatedAsset.title,
+                assetOwner: updatedAsset.user.username,
+                categoryName: updatedAsset.category.name
+              })
+            }
+          });
+        } catch (logError) {
+          console.warn('Failed to log admin action:', logError);
+          // Don't fail the approval if logging fails
+        }
+      }
+
+      return convertBigIntToNumber(updatedAsset);
+    } catch (error) {
+      console.error('Update asset approval error:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = AssetService;

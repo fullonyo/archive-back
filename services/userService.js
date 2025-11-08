@@ -90,6 +90,7 @@ class UserService {
         id: true,
         username: true,
         email: true,
+        role: true,
         accountType: true,
         avatarUrl: true,
         bannerUrl: true,

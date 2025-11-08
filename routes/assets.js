@@ -708,19 +708,23 @@ router.put('/:id/approval', verifyToken, isAdmin, async (req, res) => {
       });
     }
 
-    await AssetService.updateAssetApproval(parseInt(id), is_approved);
-
-    // TODO: Log admin action when AdminLog service is created
+    const updatedAsset = await AssetService.updateAssetApproval(
+      parseInt(id), 
+      is_approved,
+      req.user.id // Pass admin ID for logging
+    );
 
     res.json({
       success: true,
-      message: `Asset ${is_approved ? 'approved' : 'rejected'} successfully`
+      message: `Asset ${is_approved ? 'approved' : 'rejected'} successfully`,
+      data: updatedAsset
     });
   } catch (error) {
     console.error('Update approval error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update approval status'
+      message: 'Failed to update approval status',
+      error: error.message
     });
   }
 });

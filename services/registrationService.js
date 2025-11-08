@@ -146,9 +146,12 @@ class RegistrationService {
       });
 
       // Enviar email de confirmação
+      console.log(`📧 Enviando email de confirmação para: ${email}...`);
       await emailService.sendConfirmationEmail(email, nickname, confirmationToken);
 
-      console.log(`📧 Registro criado para: ${email} - Token: ${confirmationToken}`);
+      console.log(`✅ Registro criado para: ${email}`);
+      console.log(`👤 Nickname: ${nickname}`);
+      console.log(`🔑 Token: ${confirmationToken}`);
 
       return {
         id: registration.id,
@@ -185,9 +188,12 @@ class RegistrationService {
       });
 
       // Enviar novo email de confirmação
+      console.log(`📧 Enviando email de confirmação para: ${email}...`);
       await emailService.sendConfirmationEmail(email, nickname, confirmationToken);
 
-      console.log(`📧 Registro atualizado para: ${email} - Novo token: ${confirmationToken}`);
+      console.log(`✅ Registro atualizado para: ${email}`);
+      console.log(`👤 Nickname: ${nickname}`);
+      console.log(`🔑 Novo token: ${confirmationToken}`);
 
       return {
         id: updatedRegistration.id,
@@ -214,21 +220,67 @@ class RegistrationService {
         throw new Error('Token de confirmação inválido');
       }
 
+      // Se já foi confirmado, verificar se o usuário já existe
       if (registration.isConfirmed) {
-        throw new Error('Este email já foi confirmado');
+        console.log(`⚠️  Tentativa de reconfirmar email: ${registration.email}`);
+        
+        // Verificar se usuário já existe
+        const existingUser = await prisma.user.findUnique({
+          where: { email: registration.email },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            isVerified: true
+          }
+        });
+
+        if (existingUser) {
+          // Usuário já existe, retornar sucesso silenciosamente
+          console.log(`✅ Usuário já existe: ${existingUser.email} - ID: ${existingUser.id}`);
+          return {
+            user: existingUser,
+            message: 'Conta já foi criada anteriormente. Faça login para continuar.',
+            alreadyConfirmed: true // Flag para indicar que já estava confirmado
+          };
+        }
+        
+        // Se registro está confirmado mas usuário não existe, criar agora
+        console.log(`🔄 Registro confirmado mas usuário não existe. Criando usuário...`);
       }
 
       if (new Date() > registration.tokenExpiresAt) {
         throw new Error('Token de confirmação expirado');
       }
 
-      // Verificar novamente se não foi criado usuário com este email
+      // Verificar se não foi criado usuário com este email (race condition)
       const existingUser = await prisma.user.findUnique({
         where: { email: registration.email }
       });
 
       if (existingUser) {
-        throw new Error('Este email já está cadastrado');
+        // Usuário já existe, marcar como confirmado se ainda não estiver
+        if (!registration.isConfirmed) {
+          await prisma.userRegistration.update({
+            where: { id: registration.id },
+            data: {
+              isConfirmed: true,
+              confirmedAt: new Date()
+            }
+          });
+        }
+        
+        console.log(`✅ Usuário já existe: ${existingUser.email} - ID: ${existingUser.id}`);
+        return {
+          user: {
+            id: existingUser.id,
+            username: existingUser.username,
+            email: existingUser.email,
+            isVerified: existingUser.isVerified
+          },
+          message: 'Conta já foi criada. Faça login para continuar.',
+          alreadyConfirmed: true
+        };
       }
 
       // Criar usuário final
@@ -253,8 +305,9 @@ class RegistrationService {
         }
       });
 
-      // Enviar email de boas-vindas
-      await emailService.sendWelcomeEmail(registration.email, registration.nickname);
+      // Enviar email de boas-vindas (não bloquear se falhar)
+      emailService.sendWelcomeEmail(registration.email, registration.nickname)
+        .catch(err => console.error('❌ Falha ao enviar email de boas-vindas:', err.message));
 
       console.log(`✅ Usuário criado com sucesso: ${user.email} - ID: ${user.id}`);
 
@@ -265,7 +318,8 @@ class RegistrationService {
           email: user.email,
           isVerified: user.isVerified
         },
-        message: 'Conta criada com sucesso!'
+        message: 'Conta criada com sucesso!',
+        alreadyConfirmed: false
       };
 
     } catch (error) {

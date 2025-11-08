@@ -2,25 +2,63 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   constructor() {
-    // Configure seu provedor de email (Gmail, SendGrid, etc.)
-    this.transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: process.env.EMAIL_PORT || 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
+    // Verificar se as credenciais de email estão configuradas
+    this.isConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+    
+    if (this.isConfigured) {
+      // Configure seu provedor de email (Gmail, SendGrid, etc.)
+      this.transporter = nodemailer.createTransport({
+        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+        port: process.env.EMAIL_PORT || 587,
+        secure: false,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      });
+    } else {
+      console.log('⚠️  Email service not configured - emails will be logged to console');
+      this.transporter = null;
+    }
   }
 
   async sendConfirmationEmail(email, nickname, confirmationToken) {
-    const confirmationUrl = `${process.env.FRONTEND_URL}/confirm-email?token=${confirmationToken}`;
+    const confirmationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/confirm-email/${confirmationToken}`;
+    
+    // Se email não está configurado, apenas logar no console
+    if (!this.isConfigured) {
+      console.log('\n' + '='.repeat(80));
+      console.log('📧 EMAIL DE CONFIRMAÇÃO (Modo Desenvolvimento)');
+      console.log('='.repeat(80));
+      console.log(`Para: ${email}`);
+      console.log(`Nickname: ${nickname}`);
+      console.log(`\n🔗 LINK DE CONFIRMAÇÃO:`);
+      console.log(`\x1b[36m${confirmationUrl}\x1b[0m`);
+      console.log('\n📋 Copie e cole este link no navegador para confirmar o email');
+      console.log('='.repeat(80) + '\n');
+      return true;
+    }
     
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@nyoarchive.com',
+      from: `"${process.env.EMAIL_FROM_NAME || 'Nyo Archive'}" <${process.env.EMAIL_FROM || 'noreply@nyoarchive.com'}>`,
       to: email,
       subject: '🎮 Confirme seu email - Nyo Archive',
+      text: `
+Olá, ${nickname}!
+
+Bem-vindo ao Nyo Archive! 
+
+Para finalizar seu cadastro, confirme seu email clicando no link abaixo:
+
+${confirmationUrl}
+
+Este link expira em 24 horas.
+
+Se você não se cadastrou no Nyo Archive, pode ignorar este email com segurança.
+
+---
+© 2025 Nyo Archive - Comunidade de Assets VRChat
+      `.trim(),
       html: `
         <!DOCTYPE html>
         <html>
@@ -256,16 +294,55 @@ class EmailService {
     };
 
     try {
-      await this.transporter.sendMail(mailOptions);
+      const info = await this.transporter.sendMail(mailOptions);
       console.log(`✅ Email de confirmação enviado para: ${email}`);
+      console.log(`📨 Message ID: ${info.messageId}`);
+      
+      // SEMPRE mostrar o link no console para facilitar desenvolvimento
+      console.log('\n' + '='.repeat(80));
+      console.log('🔗 LINK DE CONFIRMAÇÃO:');
+      console.log(`\x1b[36m${confirmationUrl}\x1b[0m`);
+      console.log('📋 Copie e cole no navegador para confirmar');
+      console.log('='.repeat(80) + '\n');
+      
       return true;
     } catch (error) {
       console.error('❌ Erro ao enviar email:', error);
-      throw new Error('Falha ao enviar email de confirmação');
+      console.error('Detalhes do erro:', {
+        code: error.code,
+        command: error.command,
+        response: error.response,
+        responseCode: error.responseCode
+      });
+      
+      // Mostrar o link mesmo se o email falhar (útil para debug)
+      console.log('\n' + '⚠️ '.repeat(40));
+      console.log('❌ Email falhou, mas aqui está o link de confirmação:');
+      console.log(`\x1b[36m${confirmationUrl}\x1b[0m`);
+      console.log('⚠️ '.repeat(40) + '\n');
+      
+      // Em produção, relançar o erro
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('Falha ao enviar email de confirmação');
+      }
+      
+      return true; // Em dev, não falha para permitir testes
     }
   }
 
   async sendWelcomeEmail(email, nickname) {
+    // Se email não está configurado, apenas logar no console
+    if (!this.isConfigured) {
+      console.log('\n' + '='.repeat(80));
+      console.log('🎉 EMAIL DE BOAS-VINDAS (Modo Desenvolvimento)');
+      console.log('='.repeat(80));
+      console.log(`Para: ${email}`);
+      console.log(`Nickname: ${nickname}`);
+      console.log(`\n✅ Conta criada com sucesso!`);
+      console.log('='.repeat(80) + '\n');
+      return true;
+    }
+    
     const mailOptions = {
       from: process.env.EMAIL_FROM || 'noreply@nyoarchive.com',
       to: email,
