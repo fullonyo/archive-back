@@ -4,12 +4,12 @@ const Joi = require('joi');
 const schemas = {
   register: Joi.object({
     username: Joi.string()
-      .alphanum()
+      .pattern(/^[a-zA-Z0-9_]+$/)
       .min(3)
       .max(30)
       .required()
       .messages({
-        'string.alphanum': 'Username must contain only letters and numbers',
+        'string.pattern.base': 'Username must contain only letters, numbers, and underscores',
         'string.min': 'Username must be at least 3 characters long',
         'string.max': 'Username cannot exceed 30 characters',
         'any.required': 'Username is required'
@@ -37,10 +37,18 @@ const schemas = {
   login: Joi.object({
     email: Joi.string()
       .email()
-      .required()
       .messages({
-        'string.email': 'Please provide a valid email address',
-        'any.required': 'Email is required'
+        'string.email': 'Please provide a valid email address'
+      }),
+    
+    username: Joi.string()
+      .pattern(/^[a-zA-Z0-9_]+$/)
+      .min(3)
+      .max(30)
+      .messages({
+        'string.pattern.base': 'Username must contain only letters, numbers, and underscores',
+        'string.min': 'Username must be at least 3 characters',
+        'string.max': 'Username cannot exceed 30 characters'
       }),
     
     password: Joi.string()
@@ -48,14 +56,17 @@ const schemas = {
       .messages({
         'any.required': 'Password is required'
       })
-  }),
+  }).or('email', 'username'), // Pelo menos um dos dois é obrigatório
 
   updateProfile: Joi.object({
     username: Joi.string()
-      .alphanum()
+      .pattern(/^[a-zA-Z0-9_]+$/)
       .min(3)
       .max(30)
-      .optional(),
+      .optional()
+      .messages({
+        'string.pattern.base': 'Username must contain only letters, numbers, and underscores'
+      }),
     
     bio: Joi.string()
       .max(500)

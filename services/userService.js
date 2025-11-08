@@ -4,6 +4,38 @@ const { prisma } = require('../config/prisma');
  * User Service - Todas as operações relacionadas a usuários
  */
 class UserService {
+  /**
+   * Normaliza URLs de imagens do usuário através do proxy
+   * Evita problemas de CORS com Google Drive
+   */
+  static normalizeUserUrls(user) {
+    if (!user) return null;
+
+    const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+    
+    const normalizeImageUrl = (url) => {
+      if (!url) return null;
+      
+      // Se já é uma URL do proxy, retornar como está
+      if (url.includes('/api/proxy/image')) {
+        return url;
+      }
+      
+      // Se é URL do Google Drive, usar proxy
+      if (url.includes('drive.google.com') || url.includes('googleusercontent.com')) {
+        return `${BACKEND_URL}/api/proxy/image?url=${encodeURIComponent(url)}`;
+      }
+      
+      return url;
+    };
+
+    return {
+      ...user,
+      avatarUrl: normalizeImageUrl(user.avatarUrl),
+      bannerUrl: normalizeImageUrl(user.bannerUrl)
+    };
+  }
+
   // Criar novo usuário
   static async createUser(userData) {
     try {
@@ -85,13 +117,13 @@ class UserService {
       }
     }
     
-    // Convert avatarUrl to avatar for consistency with ranking endpoints
-    return {
+    const userData = {
       ...user,
-      avatar: user.avatarUrl,
-      avatarUrl: undefined,
       socialLinks: parsedSocialLinks
     };
+    
+    // Normalizar URLs de imagens através do proxy
+    return UserService.normalizeUserUrls(userData);
   }
 
   // Buscar usuário por username
@@ -318,24 +350,27 @@ class UserService {
       take: limit
     });
 
-    return users.map(user => ({
-      id: user.id,
-      username: user.username,
-      avatar: user.avatarUrl,
-      accountType: user.accountType,
-      createdAt: user.createdAt,
-      stats: {
-        uploads: user._count.assets,
-        downloads: user.assets.reduce((sum, asset) => sum + asset.downloadCount, 0),
-        likes: user._count.favorites,
-        rating: user.assets.length > 0 ? 
-          user.assets.reduce((sum, asset) => {
-            const avgRating = asset.reviews.length > 0 ? 
-              asset.reviews.reduce((rSum, r) => rSum + r.rating, 0) / asset.reviews.length : 0;
-            return sum + avgRating;
-          }, 0) / user.assets.length : 0
-      }
-    }));
+    return users.map(user => {
+      const userData = {
+        id: user.id,
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+        accountType: user.accountType,
+        createdAt: user.createdAt,
+        stats: {
+          uploads: user._count.assets,
+          downloads: user.assets.reduce((sum, asset) => sum + asset.downloadCount, 0),
+          likes: user._count.favorites,
+          rating: user.assets.length > 0 ? 
+            user.assets.reduce((sum, asset) => {
+              const avgRating = asset.reviews.length > 0 ? 
+                asset.reviews.reduce((rSum, r) => rSum + r.rating, 0) / asset.reviews.length : 0;
+              return sum + avgRating;
+            }, 0) / user.assets.length : 0
+        }
+      };
+      return UserService.normalizeUserUrls(userData);
+    });
   }
 
   // Ranking: Top por Downloads
@@ -366,10 +401,10 @@ class UserService {
     // Calcular downloads totais e ordenar
     const usersWithStats = users.map(user => {
       const totalDownloads = user.assets.reduce((sum, asset) => sum + asset.downloadCount, 0);
-      return {
+      const userData = {
         id: user.id,
         username: user.username,
-        avatar: user.avatarUrl,
+        avatarUrl: user.avatarUrl,
         accountType: user.accountType,
         createdAt: user.createdAt,
         totalDownloads,
@@ -385,6 +420,7 @@ class UserService {
             }, 0) / user.assets.length : 0
         }
       };
+      return UserService.normalizeUserUrls(userData);
     });
 
     return usersWithStats
@@ -421,24 +457,27 @@ class UserService {
       take: limit
     });
 
-    return users.map(user => ({
-      id: user.id,
-      username: user.username,
-      avatar: user.avatarUrl,
-      accountType: user.accountType,
-      createdAt: user.createdAt,
-      stats: {
-        uploads: user._count.assets,
-        downloads: user.assets.reduce((sum, asset) => sum + asset.downloadCount, 0),
-        likes: user._count.favorites,
-        rating: user.assets.length > 0 ? 
-          user.assets.reduce((sum, asset) => {
-            const avgRating = asset.reviews.length > 0 ? 
-              asset.reviews.reduce((rSum, r) => rSum + r.rating, 0) / asset.reviews.length : 0;
-            return sum + avgRating;
-          }, 0) / user.assets.length : 0
-      }
-    }));
+    return users.map(user => {
+      const userData = {
+        id: user.id,
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+        accountType: user.accountType,
+        createdAt: user.createdAt,
+        stats: {
+          uploads: user._count.assets,
+          downloads: user.assets.reduce((sum, asset) => sum + asset.downloadCount, 0),
+          likes: user._count.favorites,
+          rating: user.assets.length > 0 ? 
+            user.assets.reduce((sum, asset) => {
+              const avgRating = asset.reviews.length > 0 ? 
+                asset.reviews.reduce((rSum, r) => rSum + r.rating, 0) / asset.reviews.length : 0;
+              return sum + avgRating;
+            }, 0) / user.assets.length : 0
+        }
+      };
+      return UserService.normalizeUserUrls(userData);
+    });
   }
 
   // Ranking: Top por Rating
@@ -483,10 +522,10 @@ class UserService {
 
       const averageRating = totalReviews > 0 ? totalRating / totalReviews : 0;
       
-      return {
+      const userData = {
         id: user.id,
         username: user.username,
-        avatar: user.avatarUrl,
+        avatarUrl: user.avatarUrl,
         accountType: user.accountType,
         createdAt: user.createdAt,
         averageRating,
@@ -498,6 +537,7 @@ class UserService {
           rating: Number(averageRating.toFixed(1))
         }
       };
+      return UserService.normalizeUserUrls(userData);
     });
 
     return usersWithRating

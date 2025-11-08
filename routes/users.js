@@ -68,7 +68,7 @@ router.get('/profile', verifyToken, async (req, res) => {
 
     res.json({
       success: true,
-      data: { user: userWithStats }
+      data: { user: convertBigIntToNumber(userWithStats) }
     });
   } catch (error) {
     console.error('Get profile error:', error);
@@ -513,6 +513,40 @@ router.get('/top-rating', async (req, res) => {
   }
 });
 
+// Get user by username - USING PRISMA
+router.get('/username/:username', optionalAuth, async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    // Find user by username
+    const user = await UserService.findUserByUsername(username);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Get user stats
+    const stats = await UserService.getUserStats(user.id);
+    
+    // Get full user data with all fields
+    const fullUser = await UserService.findUserById(user.id);
+    const userWithStats = { ...fullUser, stats };
+
+    res.json({
+      success: true,
+      data: convertBigIntToNumber(userWithStats)
+    });
+  } catch (error) {
+    console.error('Get user by username error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user'
+    });
+  }
+});
+
 // Get user by ID - USING PRISMA
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
@@ -532,7 +566,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
     res.json({
       success: true,
-      data: userWithStats
+      data: convertBigIntToNumber(userWithStats)
     });
   } catch (error) {
     console.error('Get user by ID error:', error);

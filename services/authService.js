@@ -169,20 +169,31 @@ class AuthService {
   }
 
   // Login de usuário
-  static async login(email, password) {
-    // Buscar usuário
-    const user = await prisma.user.findUnique({
-      where: { email },
+  static async login(emailOrUsername, password) {
+    // Buscar usuário por email ou username
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: emailOrUsername },
+          { username: emailOrUsername }
+        ]
+      },
       select: {
         id: true,
         username: true,
         email: true,
         passwordHash: true,
-        role: true, // ✅ Incluir role
+        role: true,
         accountType: true,
         isActive: true,
         isVerified: true,
-        avatarUrl: true // ✅ Incluir campo avatar (nome correto)
+        avatarUrl: true,
+        bannerUrl: true,
+        bio: true,
+        country: true,
+        city: true,
+        socialLinks: true,
+        createdAt: true
       }
     });
 
@@ -213,9 +224,23 @@ class AuthService {
 
     // Remover senha do retorno
     const { passwordHash, ...userWithoutPassword } = user;
+    
+    // Parse socialLinks JSON se existir
+    let parsedSocialLinks = null;
+    if (userWithoutPassword.socialLinks) {
+      try {
+        parsedSocialLinks = JSON.parse(userWithoutPassword.socialLinks);
+      } catch (error) {
+        console.warn('Failed to parse socialLinks JSON:', error);
+        parsedSocialLinks = null;
+      }
+    }
 
     return {
-      user: userWithoutPassword,
+      user: {
+        ...userWithoutPassword,
+        socialLinks: parsedSocialLinks
+      },
       tokens: {
         accessToken,
         refreshToken

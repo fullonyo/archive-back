@@ -34,18 +34,27 @@ router.post('/register', validate(schemas.register), async (req, res) => {
   }
 });
 
-// Login user - USING PRISMA
+// Login user - USING PRISMA - Aceita email ou username
 router.post('/login', validate(schemas.login), async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, username, password } = req.body;
+    const credential = email || username; // Aceita ambos
 
-    const result = await AuthService.login(email, password);
+    if (!credential) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email or username required'
+      });
+    }
+
+    const result = await AuthService.login(credential, password);
 
     res.json({
       success: true,
       message: 'Login successful',
       data: {
         user: result.user,
+        token: result.tokens.accessToken, // Frontend espera 'token'
         accessToken: result.tokens.accessToken,
         refreshToken: result.tokens.refreshToken
       }
