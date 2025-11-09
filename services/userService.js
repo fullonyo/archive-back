@@ -652,12 +652,31 @@ class UserService {
       prisma.userFavorite.count({ where: { userId } })
     ]);
 
-    return {
-      favorites: favorites.map(fav => ({
+    // Normalizar URLs dos assets favoritos usando AssetService
+    const normalizedFavorites = favorites.map(fav => {
+      if (!fav.asset) return fav;
+      
+      // Normalize tags usando função do AssetService
+      const tags = AssetService.normalizeTags(fav.asset.tags);
+      
+      // Normalize URLs (imageUrls + thumbnailUrl) usando função centralizada
+      const { imageUrls, thumbnailUrl } = AssetService.normalizeAssetUrls(fav.asset);
+
+      return {
         id: fav.id,
         favoriteDate: fav.createdAt,
-        asset: fav.asset
-      })),
+        asset: {
+          ...fav.asset,
+          tags,
+          imageUrls,
+          thumbnailUrl,
+          isLiked: true // Sempre true pois está nos favoritos
+        }
+      };
+    });
+
+    return {
+      favorites: normalizedFavorites,
       pagination: {
         page,
         limit,

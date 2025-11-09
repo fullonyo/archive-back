@@ -301,11 +301,17 @@ class AssetService {
         asset.averageRating = 0;
       }
       
-      // Check if asset is favorited by the logged user
+      // Check if asset is favorited OR bookmarked by the logged user
       if (userId) {
-        asset.isLiked = await this.isFavoritedByUser(userId, id);
+        const [isLiked, isBookmarked] = await Promise.all([
+          this.isFavoritedByUser(userId, id),
+          this.isBookmarkedByUser(userId, id)
+        ]);
+        asset.isLiked = isLiked;
+        asset.isBookmarked = isBookmarked;
       } else {
         asset.isLiked = false;
+        asset.isBookmarked = false;
       }
     }
     
@@ -325,7 +331,8 @@ class AssetService {
     isActive = true,
     sortBy = 'createdAt',
     sortOrder = 'desc',
-    tags = null
+    tags = null,
+    currentUserId = null // Para verificar isLiked
   }) {
     const skip = (page - 1) * limit;
     
@@ -440,7 +447,37 @@ class AssetService {
       });
     }
 
-    // Combinar dados dos assets com reviews (BATCH PROCESSING)
+    // Terceira consulta: verificar favoritos E bookmarks do usuário atual (se autenticado)
+    let favoritesSet = new Set();
+    let bookmarksSet = new Set();
+    
+    if (currentUserId && assets.length > 0) {
+      const assetIds = assets.map(asset => asset.id);
+      
+      // Buscar favorites e bookmarks em paralelo
+      const [favorites, bookmarks] = await Promise.all([
+        prisma.userFavorite.findMany({
+          where: {
+            userId: currentUserId,
+            assetId: { in: assetIds }
+          },
+          select: { assetId: true }
+        }),
+        prisma.userBookmark.findMany({
+          where: {
+            userId: currentUserId,
+            assetId: { in: assetIds }
+          },
+          select: { assetId: true }
+        })
+      ]);
+      
+      // Criar Sets para lookup rápido O(1)
+      favoritesSet = new Set(favorites.map(fav => fav.assetId));
+      bookmarksSet = new Set(bookmarks.map(bm => bm.assetId));
+    }
+
+    // Combinar dados dos assets com reviews e favoritos (BATCH PROCESSING)
     const assetsWithRating = assets.map(asset => {
       // Normalize tags
       const tags = normalizeTags(asset.tags);
@@ -454,7 +491,9 @@ class AssetService {
         imageUrls,
         thumbnailUrl,
         averageRating: reviewsMap.get(asset.id)?.averageRating || 0,
-        reviewCount: reviewsMap.get(asset.id)?.reviewCount || 0
+        reviewCount: reviewsMap.get(asset.id)?.reviewCount || 0,
+        isLiked: favoritesSet.has(asset.id), // Verificar se está nos favoritos (heart)
+        isBookmarked: bookmarksSet.has(asset.id) // Verificar se está nos bookmarks (save)
       };
     });
 
@@ -534,6 +573,18 @@ class AssetService {
       }
     });
     return !!favorite;
+  }
+
+  static async isBookmarkedByUser(userId, assetId) {
+    const bookmark = await prisma.userBookmark.findUnique({
+      where: {
+        unique_user_asset_bookmark: {
+          userId,
+          assetId
+        }
+      }
+    });
+    return !!bookmark;
   }
 
   // Toggle bookmark (save for later)

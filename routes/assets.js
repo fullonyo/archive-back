@@ -50,10 +50,14 @@ router.get('/', optionalAuth, CacheHeadersMiddleware.apiData(3), async (req, res
       categoryId: category,
       tags: tags ? tags.split(',') : undefined,
       isApproved: true,
-      isActive: true
+      isActive: true,
+      currentUserId: req.user?.id // Passar userId para verificar isLiked
     };
 
-    const cacheKey = `assets_${JSON.stringify(filters)}`;
+    // Cache key diferente para usuários autenticados (isLiked é personalizado)
+    const cacheKey = req.user?.id 
+      ? `assets_user${req.user.id}_${JSON.stringify({ ...filters, currentUserId: undefined })}`
+      : `assets_${JSON.stringify(filters)}`;
 
     // Usar o cache avançado
     const result = await AdvancedCacheService.getCachedAssets(filters, cacheKey);
