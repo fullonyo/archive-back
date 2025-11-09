@@ -1,4 +1,5 @@
 const { prisma } = require('../config/prisma');
+const AssetService = require('./assetService');
 
 /**
  * User Service - Todas as operações relacionadas a usuários
@@ -719,42 +720,19 @@ class UserService {
       })
     ]);
 
-    // Normalizar tags e imageUrls (igual ao AssetService.findAssets)
+    // Normalizar tags, imageUrls e URLs (USAR FUNÇÕES CENTRALIZADAS DO ASSETSERVICE)
     const normalizedAssets = assets.map(asset => {
-      // Parse tags JSON string
-      let tags = [];
-      if (typeof asset.tags === 'string') {
-        try {
-          const parsed = JSON.parse(asset.tags);
-          if (Array.isArray(parsed)) {
-            tags = parsed.filter(tag => tag && typeof tag === 'string');
-          }
-        } catch {
-          tags = [];
-        }
-      } else if (Array.isArray(asset.tags)) {
-        tags = asset.tags.filter(tag => tag && typeof tag === 'string');
-      }
-
-      // Parse imageUrls JSON string
-      let imageUrls = [];
-      if (typeof asset.imageUrls === 'string') {
-        try {
-          const parsed = JSON.parse(asset.imageUrls);
-          if (Array.isArray(parsed)) {
-            imageUrls = parsed.filter(url => url && typeof url === 'string');
-          }
-        } catch {
-          imageUrls = [asset.imageUrls];
-        }
-      } else if (Array.isArray(asset.imageUrls)) {
-        imageUrls = asset.imageUrls.filter(url => url && typeof url === 'string');
-      }
+      // Normalize tags usando função do AssetService
+      const tags = AssetService.normalizeTags(asset.tags);
+      
+      // Normalize URLs (imageUrls + thumbnailUrl) usando função centralizada
+      const { imageUrls, thumbnailUrl } = AssetService.normalizeAssetUrls(asset);
 
       return {
         ...asset,
         tags,
-        imageUrls
+        imageUrls,
+        thumbnailUrl
       };
     });
 

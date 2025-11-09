@@ -115,6 +115,38 @@ function extractGoogleDriveId(url) {
   return null;
 }
 
+// Helper function to convert Google Drive URL to proxy URL
+function convertToProxyUrl(driveUrl) {
+  if (!driveUrl || typeof driveUrl !== 'string') return driveUrl;
+  
+  // Skip if already a proxy URL
+  if (driveUrl.includes('/api/proxy/image')) return driveUrl;
+  
+  // Skip if it's a data URI or placeholder
+  if (driveUrl.startsWith('data:') || driveUrl.includes('placeholder')) return driveUrl;
+  
+  const baseUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+  return `${baseUrl}/api/proxy/image?url=${encodeURIComponent(driveUrl)}`;
+}
+
+// Helper function to normalize asset URLs (thumbnailUrl + imageUrls)
+function normalizeAssetUrls(asset) {
+  // Normalize imageUrls array
+  let imageUrls = normalizeImageUrls(asset.imageUrls);
+  
+  // Get proper thumbnail URL
+  let thumbnailUrl = getProperThumbnailUrl(asset);
+  
+  // Convert all Google Drive URLs to proxy URLs
+  imageUrls = imageUrls.map(url => convertToProxyUrl(url));
+  thumbnailUrl = convertToProxyUrl(thumbnailUrl);
+  
+  return {
+    imageUrls,
+    thumbnailUrl
+  };
+}
+
 // Helper function to generate proper Google Drive thumbnail URL
 function getProperThumbnailUrl(asset) {
   let fileId = null;
@@ -245,9 +277,13 @@ class AssetService {
     });
     
     if (asset) {
-      asset.tags = normalizeTags(asset.tags); // Normalize tags to always be an array
-      asset.imageUrls = normalizeImageUrls(asset.imageUrls); // Normalize imageUrls to always be an array
-      asset.thumbnailUrl = getProperThumbnailUrl(asset); // Fix thumbnail URL
+      // Normalize tags
+      asset.tags = normalizeTags(asset.tags);
+      
+      // Normalize URLs (imageUrls + thumbnailUrl) - CENTRALIZADO
+      const { imageUrls, thumbnailUrl } = normalizeAssetUrls(asset);
+      asset.imageUrls = imageUrls;
+      asset.thumbnailUrl = thumbnailUrl;
       
       // Calculate average rating from reviews
       if (asset.reviews && asset.reviews.length > 0) {
@@ -394,14 +430,22 @@ class AssetService {
     });
 
     // Combinar dados dos assets com reviews
-    const assetsWithRating = assets.map(asset => ({
-      ...asset,
-      tags: normalizeTags(asset.tags),
-      imageUrls: normalizeImageUrls(asset.imageUrls),
-      thumbnailUrl: getProperThumbnailUrl(asset),
-      averageRating: reviewsMap.get(asset.id)?.averageRating || 0,
-      reviewCount: reviewsMap.get(asset.id)?.reviewCount || 0
-    }));
+    const assetsWithRating = assets.map(asset => {
+      // Normalize tags
+      const tags = normalizeTags(asset.tags);
+      
+      // Normalize URLs (imageUrls + thumbnailUrl) - CENTRALIZADO
+      const { imageUrls, thumbnailUrl } = normalizeAssetUrls(asset);
+      
+      return {
+        ...asset,
+        tags,
+        imageUrls,
+        thumbnailUrl,
+        averageRating: reviewsMap.get(asset.id)?.averageRating || 0,
+        reviewCount: reviewsMap.get(asset.id)?.reviewCount || 0
+      };
+    });
 
     return convertBigIntToNumber({
       assets: assetsWithRating,
@@ -1057,3 +1101,6 @@ class AssetService {
 }
 
 module.exports = AssetService;
+module.exports.normalizeAssetUrls = normalizeAssetUrls;
+module.exports.normalizeTags = normalizeTags;
+module.exports.normalizeImageUrls = normalizeImageUrls;
