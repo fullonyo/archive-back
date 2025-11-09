@@ -57,9 +57,9 @@ class CacheHeadersMiddleware {
     if (path.includes('/api/assets')) {
       res.set('Cache-Control', 'public, max-age=180'); // 3 minutos
     }
-    // Categorias - cache longo (mudam pouco)
+    // Categorias - cache curto para real-time updates
     else if (path.includes('/api/categories')) {
-      res.set('Cache-Control', 'public, max-age=1800'); // 30 minutos
+      res.set('Cache-Control', 'public, max-age=120, must-revalidate'); // 2 minutos
     }
     // Usuário logado - sem cache
     else if (path.includes('/api/user/profile')) {

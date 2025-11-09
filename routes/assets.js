@@ -653,8 +653,11 @@ router.delete('/:id', verifyToken, async (req, res) => {
 // Get asset categories - USING PRISMA
 router.get('/categories/list', async (req, res) => {
   try {
-    const CategoryService = require('../services/categoryService');
-    const categories = await CategoryService.findAllCategories();
+    // Use cached categories for consistency with /categories endpoint
+    const AdvancedCacheService = require('../services/advancedCacheService');
+    const categories = await AdvancedCacheService.getCachedCategories();
+
+    res.set('Cache-Control', 'public, max-age=120, must-revalidate');
 
     res.json({
       success: true,

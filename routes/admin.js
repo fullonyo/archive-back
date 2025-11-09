@@ -2119,4 +2119,315 @@ router.get('/analytics/export/:format', verifyToken, requirePermission('view_ana
   }
 });
 
+// ============================================
+// CATEGORIES MANAGEMENT
+// ============================================
+
+/**
+ * @route   GET /api/admin/categories
+ * @desc    Get all categories with asset counts (Admin)
+ * @access  Private (Admin)
+ */
+router.get('/categories', verifyToken, requirePermission('view_admin_panel'), async (req, res) => {
+  try {
+    const categories = await prisma.assetCategory.findMany({
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        icon: true,
+        isActive: true,
+        createdAt: true,
+        _count: {
+          select: {
+            assets: true
+          }
+        }
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    const formattedCategories = categories.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      description: cat.description,
+      icon: cat.icon,
+      isActive: cat.isActive,
+      createdAt: cat.createdAt,
+      assetCount: cat._count.assets
+    }));
+
+    res.json({
+      success: true,
+      data: formattedCategories
+    });
+
+  } catch (error) {
+    console.error('❌ Get categories error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/admin/categories/:id
+ * @desc    Get category by ID with details
+ * @access  Private (Admin)
+ */
+router.get('/categories/:id', verifyToken, requirePermission('view_admin_panel'), async (req, res) => {
+  try {
+    const categoryId = parseInt(req.params.id);
+
+    if (isNaN(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID da categoria inválido'
+      });
+    }
+
+    const category = await prisma.assetCategory.findUnique({
+      where: { id: categoryId },
+      include: {
+        _count: {
+          select: {
+            assets: true
+          }
+        }
+      }
+    });
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: 'Categoria não encontrada'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...category,
+        assetCount: category._count.assets
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get category error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/admin/categories
+ * @desc    Create new category
+ * @access  Private (Admin)
+ */
+router.post('/categories', verifyToken, requirePermission('manage_categories'), async (req, res) => {
+  try {
+    const { name, description, icon, isActive = true } = req.body;
+
+    // Validation
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nome da categoria é obrigatório'
+      });
+    }
+
+    // Check if category already exists
+    const existing = await prisma.assetCategory.findFirst({
+      where: { 
+        name: {
+          equals: name.toLowerCase()
+        }
+      }
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: 'Já existe uma categoria com este nome'
+      });
+    }
+
+    const category = await prisma.assetCategory.create({
+      data: {
+        name: name.toLowerCase(),
+        description,
+        icon,
+        isActive
+      }
+    });
+
+    // Invalidate cache after creating category
+    await AdvancedCacheService.invalidateCategoriesCache();
+
+    res.status(201).json({
+      success: true,
+      message: 'Categoria criada com sucesso',
+      data: category
+    });
+
+  } catch (error) {
+    console.error('❌ Create category error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+/**
+ * @route   PUT /api/admin/categories/:id
+ * @desc    Update category
+ * @access  Private (Admin)
+ */
+router.put('/categories/:id', verifyToken, requirePermission('manage_categories'), async (req, res) => {
+  try {
+    const categoryId = parseInt(req.params.id);
+    const { name, description, icon, isActive } = req.body;
+
+    if (isNaN(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID da categoria inválido'
+      });
+    }
+
+    // Check if exists
+    const existing = await prisma.assetCategory.findUnique({
+      where: { id: categoryId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Categoria não encontrada'
+      });
+    }
+
+    // If updating name, check for duplicates
+    if (name !== undefined && name.toLowerCase() !== existing.name.toLowerCase()) {
+      const duplicate = await prisma.assetCategory.findFirst({
+        where: {
+          name: {
+            equals: name.toLowerCase()
+          },
+          id: {
+            not: categoryId
+          }
+        }
+      });
+
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: 'Já existe uma categoria com este nome'
+        });
+      }
+    }
+
+    // Build update data
+    const updateData = {};
+    if (name !== undefined) updateData.name = name.toLowerCase();
+    if (description !== undefined) updateData.description = description;
+    if (icon !== undefined) updateData.icon = icon;
+    if (isActive !== undefined) updateData.isActive = isActive;
+
+    const category = await prisma.assetCategory.update({
+      where: { id: categoryId },
+      data: updateData
+    });
+
+    // Invalidate both caches (assets depend on categories)
+    await AdvancedCacheService.invalidateCategoriesCache();
+    await AdvancedCacheService.invalidateAssetsCaches();
+
+    res.json({
+      success: true,
+      message: 'Categoria atualizada com sucesso',
+      data: category
+    });
+
+  } catch (error) {
+    console.error('❌ Update category error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+/**
+ * @route   DELETE /api/admin/categories/:id
+ * @desc    Delete category (only if no assets)
+ * @access  Private (Admin)
+ */
+router.delete('/categories/:id', verifyToken, requirePermission('manage_categories'), async (req, res) => {
+  try {
+    const categoryId = parseInt(req.params.id);
+
+    if (isNaN(categoryId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID da categoria inválido'
+      });
+    }
+
+    // Check if exists
+    const existing = await prisma.assetCategory.findUnique({
+      where: { id: categoryId },
+      include: {
+        _count: {
+          select: {
+            assets: true
+          }
+        }
+      }
+    });
+
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Categoria não encontrada'
+      });
+    }
+
+    // Check if has assets
+    if (existing._count.assets > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Não é possível excluir esta categoria. Há ${existing._count.assets} asset(s) associado(s)`
+      });
+    }
+
+    await prisma.assetCategory.delete({
+      where: { id: categoryId }
+    });
+
+    // Invalidate both caches (assets depend on categories)
+    await AdvancedCacheService.invalidateCategoriesCache();
+    await AdvancedCacheService.invalidateAssetsCaches();
+
+    res.json({
+      success: true,
+      message: 'Categoria excluída com sucesso'
+    });
+
+  } catch (error) {
+    console.error('❌ Delete category error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
 module.exports = router;

@@ -16,7 +16,7 @@ const prisma = new PrismaClient();
  * @desc    Get all categories (with hierarchy) - USING ADVANCED CACHE
  * @access  Public
  */
-router.get('/', CacheHeadersMiddleware.apiData(30), async (req, res) => {
+router.get('/', CacheHeadersMiddleware.apiData(2), async (req, res) => {
   try {
     const { include_assets = false, parent_id = null } = req.query;
 
@@ -32,14 +32,18 @@ router.get('/', CacheHeadersMiddleware.apiData(30), async (req, res) => {
       icon: getIconForCategory(category.name),
       color: getColorForCategory(category.name),
       parent_id: null, // TODO: implementar hierarquia
-      asset_count: include_assets === 'true' ? (category._count?.assets || 0) : 0,
+      assetCount: category._count?.assets || 0,
+      asset_count: category._count?.assets || 0,
       isActive: category.isActive
     }));
 
     // Remover duplicatas, mantendo a categoria com mais assets ou melhor configuração
     const uniqueCategories = removeDuplicateCategories(formattedCategories);
 
-    res.json(uniqueCategories);
+    res.json({
+      success: true,
+      data: uniqueCategories
+    });
   } catch (error) {
     console.error('Categories fetch error:', error);
     res.status(500).json({
