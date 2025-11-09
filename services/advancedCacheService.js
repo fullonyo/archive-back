@@ -49,6 +49,7 @@ class AdvancedCacheService {
     if (filters.categoryId) ttl = 600; // 10 min para categoria específica
     if (filters.searchQuery) ttl = 180; // 3 min para busca
     if (filters.sortBy === 'newest') ttl = 120; // 2 min para "mais novos"
+    if (filters.collections) ttl = 300; // 5 min para coleções
     
     return ttl;
   }
@@ -193,6 +194,28 @@ class AdvancedCacheService {
       console.error('Error invalidating users cache:', error);
       caches.users.flushAll();
       caches.stats.flushAll();
+    }
+  }
+
+  // Invalidar cache de coleções de um usuário
+  static async invalidateCollectionsCache(userId) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🧹 Invalidating collections cache for user ${userId}...`);
+    }
+    
+    try {
+      // Invalidar cache de listagem de coleções do usuário
+      await redisCacheService.delPattern(`collections_user_${userId}_*`);
+      // Invalidar cache de busca de coleções
+      await redisCacheService.delPattern(`collections_search_${userId}_*`);
+      // Invalidar cache de asset collections
+      await redisCacheService.delPattern(`asset_collections_*`);
+      
+      // In-memory fallback
+      caches.users.del(`collections_user_${userId}`);
+    } catch (error) {
+      console.error('Error invalidating collections cache:', error);
+      caches.users.flushAll();
     }
   }
 

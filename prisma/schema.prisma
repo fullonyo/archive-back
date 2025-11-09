@@ -41,6 +41,7 @@ model User {
   grantedPermissions UserPermission[]    @relation("GrantedBy")
   permissions        UserPermission[]
   vrchatConnection   VRChatConnection?
+  collections        Collection[]
 
   @@index([email])
   @@index([username])
@@ -89,6 +90,7 @@ model Asset {
   category       AssetCategory   @relation(fields: [categoryId], references: [id])
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   favorites      UserFavorite[]
+  collectionItems CollectionItem[]
 
   @@index([userId])
   @@index([categoryId])
@@ -303,6 +305,49 @@ model VRChatConnection {
   @@index([vrchatUserId])
   @@index([isActive])
   @@map("vrchat_connections")
+}
+
+model Collection {
+  id          Int              @id @default(autoincrement())
+  name        String           @db.VarChar(100)
+  description String?          @db.Text
+  emoji       String?          @db.VarChar(10) @default("📌")
+  coverUrl    String?          @map("cover_url") @db.VarChar(1000)
+  userId      Int              @map("user_id")
+  visibility  CollectionVisibility @default(PRIVATE)
+  assetCount  Int              @default(0) @map("asset_count")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       CollectionItem[]
+
+  @@index([userId])
+  @@index([userId, visibility])
+  @@index([createdAt])
+  @@map("collections")
+}
+
+model CollectionItem {
+  id           Int        @id @default(autoincrement())
+  collectionId Int        @map("collection_id")
+  assetId      Int        @map("asset_id")
+  note         String?    @db.Text
+  order        Int        @default(0)
+  addedAt      DateTime   @default(now()) @map("added_at")
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  asset        Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, assetId])
+  @@index([collectionId, order])
+  @@index([assetId])
+  @@map("collection_items")
+}
+
+enum CollectionVisibility {
+  PUBLIC  @map("public")
+  PRIVATE @map("private")
+
+  @@map("collection_visibility")
 }
 
 enum AccountType {
