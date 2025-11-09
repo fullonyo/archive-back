@@ -108,7 +108,7 @@ router.get('/:id', async (req, res) => {
     // Get assets for the category
     const filters = {
       categoryId,
-      sort
+      sortBy: sort // Fix: AssetService.findAssets expects sortBy, not sort
     };
 
     const assetsResult = await AssetService.findAssets(filters, {
