@@ -481,6 +481,60 @@ class AssetService {
     return !!favorite;
   }
 
+  // Toggle bookmark (save for later)
+  static async toggleBookmark(userId, assetId) {
+    const existing = await prisma.userBookmark.findUnique({
+      where: {
+        unique_user_asset_bookmark: {
+          userId,
+          assetId
+        }
+      }
+    });
+
+    if (existing) {
+      // Remove bookmark
+      await prisma.userBookmark.delete({
+        where: { id: existing.id }
+      });
+      
+      // Get updated bookmark count
+      const bookmarkCount = await prisma.userBookmark.count({
+        where: { assetId }
+      });
+      
+      return { action: 'removed', isBookmarked: false, bookmarkCount };
+    } else {
+      // Add bookmark
+      await prisma.userBookmark.create({
+        data: {
+          userId,
+          assetId
+        }
+      });
+      
+      // Get updated bookmark count
+      const bookmarkCount = await prisma.userBookmark.count({
+        where: { assetId }
+      });
+      
+      return { action: 'added', isBookmarked: true, bookmarkCount };
+    }
+  }
+
+  // Check if asset is bookmarked by user
+  static async isBookmarkedByUser(userId, assetId) {
+    const bookmark = await prisma.userBookmark.findUnique({
+      where: {
+        unique_user_asset_bookmark: {
+          userId,
+          assetId
+        }
+      }
+    });
+    return !!bookmark;
+  }
+
   // Adicionar/atualizar review
   static async createOrUpdateReview(reviewData) {
     const { userId, assetId, rating, comment } = reviewData;

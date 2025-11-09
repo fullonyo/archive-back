@@ -215,11 +215,15 @@ class CollectionService {
         ...item,
         asset: {
           ...convertBigIntToNumber(asset),
+          author: asset.user, // Alias user -> author para compatibilidade com AssetCard
+          category: asset.category?.name || 'Uncategorized', // Simplifica categoria
           likes: asset._count?.favorites || 0,
           downloads: asset._count?.downloads || 0,
           comments: asset._count?.reviews || 0,
           tags: asset.tags ? JSON.parse(asset.tags) : [],
-          imageUrls: asset.imageUrls ? JSON.parse(asset.imageUrls) : []
+          imageUrls: asset.imageUrls ? JSON.parse(asset.imageUrls) : [],
+          thumbnail: asset.thumbnailUrl || (asset.imageUrls ? JSON.parse(asset.imageUrls)[0] : null),
+          uploadedAt: asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('pt-BR') : 'N/A'
         }
       };
     });

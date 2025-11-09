@@ -6,6 +6,7 @@ const { verifyToken, isAdmin, optionalAuth } = require('../middleware/auth');
 const { validate, schemas, validateQuery, querySchemas } = require('../middleware/validation');
 const { uploadConfigs, handleMulterError } = require('../config/multer');
 const googleDriveService = require('../services/googleDrive');
+const { prisma } = require('../config/prisma');
 
 const router = express.Router();
 
@@ -517,6 +518,7 @@ router.get('/top-rating', async (req, res) => {
 router.get('/username/:username', optionalAuth, async (req, res) => {
   try {
     const { username } = req.params;
+    const currentUserId = req.user?.id;
     
     // ✅ OTIMIZADO: Uma única query com include
     const user = await UserService.findUserByUsernameWithStats(username);
@@ -527,6 +529,25 @@ router.get('/username/:username', optionalAuth, async (req, res) => {
         message: 'User not found'
       });
     }
+
+    // Check if current user is following this user
+    if (currentUserId && currentUserId !== user.id) {
+      user.isFollowing = await UserService.isFollowing(currentUserId, user.id);
+    }
+
+    // Get follower/following counts
+    const followerCount = await prisma.userFollow.count({
+      where: { followingId: user.id }
+    });
+    const followingCount = await prisma.userFollow.count({
+      where: { followerId: user.id }
+    });
+
+    user.stats = {
+      ...user.stats,
+      followers: followerCount,
+      following: followingCount
+    };
 
     res.json({
       success: true,
@@ -827,6 +848,92 @@ router.get('/:id/comments/stats', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get comment stats'
+    });
+  }
+});
+
+// Follow/Unfollow user - NEW ENDPOINT
+router.post('/:id/follow', verifyToken, async (req, res) => {
+  try {
+    const targetUserId = parseInt(req.params.id);
+    const currentUserId = req.user.id;
+
+    // Não pode seguir a si mesmo
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot follow yourself'
+      });
+    }
+
+    // Verificar se usuário alvo existe
+    const targetUser = await UserService.findUserById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const result = await UserService.toggleFollow(currentUserId, targetUserId);
+
+    res.json({
+      success: true,
+      message: result.isFollowing ? 'User followed successfully' : 'User unfollowed',
+      data: {
+        isFollowing: result.isFollowing,
+        followerCount: result.followerCount || 0
+      }
+    });
+  } catch (error) {
+    console.error('Toggle follow error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to toggle follow'
+    });
+  }
+});
+
+// Get user followers
+router.get('/:id/followers', optionalAuth, validateQuery(querySchemas.pagination), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
+    const result = await UserService.getFollowers(userId, page, limit);
+
+    res.json({
+      success: true,
+      data: convertBigIntToNumber(result)
+    });
+  } catch (error) {
+    console.error('Get followers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get followers'
+    });
+  }
+});
+
+// Get users that a user is following
+router.get('/:id/following', optionalAuth, validateQuery(querySchemas.pagination), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
+    const result = await UserService.getFollowing(userId, page, limit);
+
+    res.json({
+      success: true,
+      data: convertBigIntToNumber(result)
+    });
+  } catch (error) {
+    console.error('Get following error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get following'
     });
   }
 });

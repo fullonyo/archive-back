@@ -688,6 +688,13 @@ class UserService {
       prisma.asset.findMany({
         where: whereCondition,
         include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              avatarUrl: true
+            }
+          },
           category: {
             select: {
               id: true,
@@ -722,8 +729,136 @@ class UserService {
       }
     };
   }
-}
 
-module.exports = UserService;
+  // Toggle follow/unfollow user
+  static async toggleFollow(followerId, followingId) {
+    const existing = await prisma.userFollow.findUnique({
+      where: {
+        unique_follower_following: {
+          followerId,
+          followingId
+        }
+      }
+    });
+
+    if (existing) {
+      // Unfollow
+      await prisma.userFollow.delete({
+        where: { id: existing.id }
+      });
+
+      // Get updated follower count
+      const followerCount = await prisma.userFollow.count({
+        where: { followingId }
+      });
+
+      return { action: 'unfollowed', isFollowing: false, followerCount };
+    } else {
+      // Follow
+      await prisma.userFollow.create({
+        data: {
+          followerId,
+          followingId
+        }
+      });
+
+      // Get updated follower count
+      const followerCount = await prisma.userFollow.count({
+        where: { followingId }
+      });
+
+      return { action: 'followed', isFollowing: true, followerCount };
+    }
+  }
+
+  // Check if user is following another user
+  static async isFollowing(followerId, followingId) {
+    const follow = await prisma.userFollow.findUnique({
+      where: {
+        unique_follower_following: {
+          followerId,
+          followingId
+        }
+      }
+    });
+    return !!follow;
+  }
+
+  // Get user's followers
+  static async getFollowers(userId, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+
+    const [followers, total] = await Promise.all([
+      prisma.userFollow.findMany({
+        where: { followingId: userId },
+        include: {
+          follower: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              role: true
+            }
+          }
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.userFollow.count({
+        where: { followingId: userId }
+      })
+    ]);
+
+    return {
+      followers: followers.map(f => f.follower),
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  // Get users that a user is following
+  static async getFollowing(userId, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+
+    const [following, total] = await Promise.all([
+      prisma.userFollow.findMany({
+        where: { followerId: userId },
+        include: {
+          following: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              role: true
+            }
+          }
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.userFollow.count({
+        where: { followerId: userId }
+      })
+    ]);
+
+    return {
+      following: following.map(f => f.following),
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  }
+}
 
 module.exports = UserService;

@@ -857,4 +857,38 @@ router.get('/:id/related', async (req, res) => {
   }
 });
 
+// Add/remove bookmark - NEW ENDPOINT
+router.post('/:id/bookmark', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const asset = await AssetService.findAssetById(parseInt(id));
+    
+    if (!asset) {
+      return res.status(404).json({
+        success: false,
+        message: 'Asset not found'
+      });
+    }
+
+    const result = await AssetService.toggleBookmark(userId, parseInt(id));
+
+    res.json({
+      success: true,
+      message: result.isBookmarked ? 'Asset bookmarked' : 'Bookmark removed',
+      data: { 
+        isBookmarked: result.isBookmarked,
+        bookmarkCount: result.bookmarkCount || 0
+      }
+    });
+  } catch (error) {
+    console.error('Toggle bookmark error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to toggle bookmark'
+    });
+  }
+});
+
 module.exports = router;
