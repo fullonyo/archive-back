@@ -141,7 +141,9 @@ class AdvancedCacheService {
 
   // Invalidação inteligente de cache
   static async invalidateAssetsCaches() {
-    console.log('🧹 Invalidating assets caches...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🧹 Invalidating assets caches...');
+    }
     
     try {
       // Invalidar no Redis por padrão
@@ -163,7 +165,9 @@ class AdvancedCacheService {
   }
 
   static async invalidateCategoriesCache() {
-    console.log('🧹 Invalidating categories cache...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🧹 Invalidating categories cache...');
+    }
     
     try {
       await redisCacheService.del('all_categories');
@@ -175,7 +179,9 @@ class AdvancedCacheService {
   }
 
   static async invalidateUsersCaches() {
-    console.log('🧹 Invalidating users caches...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🧹 Invalidating users caches...');
+    }
     
     try {
       await redisCacheService.delPattern('top_uploaders_*');
@@ -192,22 +198,30 @@ class AdvancedCacheService {
 
   // Warming up do cache na inicialização (otimizado para menos conexões)
   static async warmUpCache() {
-    console.log('🔥 Warming up cache (optimized)...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔥 Warming up cache (optimized)...');
+    }
     
     try {
       // Pre-carregar apenas dados essenciais, um de cada vez para evitar sobrecarga
-      console.log('📂 Loading categories...');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📂 Loading categories...');
+      }
       await this.getCachedCategories();
       
       // Pequena pausa entre operações
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      console.log('📊 Loading basic stats...');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📊 Loading basic stats...');
+      }
       await this.getCachedStats();
       
       // O resto será carregado sob demanda
-      console.log('✅ Essential cache warmed up successfully');
-      console.log('💡 Additional data will be cached on-demand');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Essential cache warmed up successfully');
+        console.log('💡 Additional data will be cached on-demand');
+      }
       
     } catch (error) {
       console.error('❌ Cache warm up failed:', error);

@@ -63,8 +63,36 @@ router.get('/:id', async (req, res) => {
     const { id } = req.params;
     const { page = 1, limit = 20, sort = 'newest' } = req.query;
 
+    // Validate ID is a valid number
+    const categoryId = parseInt(id);
+    if (isNaN(categoryId) || categoryId < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de categoria inválido'
+      });
+    }
+
+    // Validate pagination params
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    if (isNaN(pageNum) || pageNum < 1 || isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parâmetros de paginação inválidos'
+      });
+    }
+
+    // Validate sort param
+    const validSorts = ['newest', 'popular', 'trending', 'downloads'];
+    if (!validSorts.includes(sort)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Parâmetro de ordenação inválido'
+      });
+    }
+
     // Find category
-    const category = await CategoryService.findCategoryById(parseInt(id));
+    const category = await CategoryService.findCategoryById(categoryId);
     
     if (!category) {
       return res.status(404).json({
@@ -79,13 +107,13 @@ router.get('/:id', async (req, res) => {
 
     // Get assets for the category
     const filters = {
-      categoryId: parseInt(id),
+      categoryId,
       sort
     };
 
     const assetsResult = await AssetService.findAssets(filters, {
-      page: parseInt(page),
-      limit: parseInt(limit)
+      page: pageNum,
+      limit: limitNum
     });
 
     res.json({
