@@ -56,39 +56,47 @@ class RedisCacheService {
     }
   }
 
-  // Método universal para get (Redis ou fallback)
+  // Método universal para get (Redis ou fallback) - OPTIMIZED
   async get(key) {
     try {
       if (this.isRedisEnabled && this.client?.isReady) {
         const value = await this.client.get(key);
-        return value ? JSON.parse(value) : null;
+        if (!value) return null;
+        
+        // Fast path: se já é objeto, retorna direto
+        if (typeof value === 'object') return value;
+        
+        // Parse apenas se necessário
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value; // Retorna string se não for JSON
+        }
       } else {
-        // Fallback para cache em memória
+        // Fallback para cache em memória (já retorna objeto)
         return this.fallbackCache.get(key) || null;
       }
     } catch (error) {
       console.error('❌ Cache get error:', error);
-      // Fallback em caso de erro
       return this.fallbackCache.get(key) || null;
     }
   }
 
-  // Método universal para set (Redis ou fallback)
+  // Método universal para set (Redis ou fallback) - OPTIMIZED
   async set(key, value, ttlSeconds = 300) {
     try {
-      const stringValue = JSON.stringify(value);
-      
       if (this.isRedisEnabled && this.client?.isReady) {
+        // Stringify apenas uma vez
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
         await this.client.setEx(key, ttlSeconds, stringValue);
       } else {
-        // Fallback para cache em memória
+        // Fallback para cache em memória (aceita objeto direto)
         this.fallbackCache.set(key, value, ttlSeconds);
       }
       
       return true;
     } catch (error) {
       console.error('❌ Cache set error:', error);
-      // Fallback em caso de erro
       this.fallbackCache.set(key, value, ttlSeconds);
       return false;
     }

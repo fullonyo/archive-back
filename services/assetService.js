@@ -1,6 +1,6 @@
 const { prisma } = require('../config/prisma');
 
-// Helper function to convert BigInt to Number recursively
+// Helper function to convert BigInt to Number recursively (OPTIMIZED)
 function convertBigIntToNumber(obj) {
   if (obj === null || obj === undefined) {
     return obj;
@@ -10,19 +10,27 @@ function convertBigIntToNumber(obj) {
     return Number(obj);
   }
   
-  if (Array.isArray(obj)) {
-    return obj.map(convertBigIntToNumber);
-  }
-  
-  // Preserve Date objects
+  // Preserve Date objects (fast check)
   if (obj instanceof Date) {
     return obj;
   }
   
+  if (Array.isArray(obj)) {
+    // Pre-allocate array for better performance
+    const result = new Array(obj.length);
+    for (let i = 0; i < obj.length; i++) {
+      result[i] = convertBigIntToNumber(obj[i]);
+    }
+    return result;
+  }
+  
   if (typeof obj === 'object') {
-    const converted = {};
-    for (const [key, value] of Object.entries(obj)) {
-      converted[key] = convertBigIntToNumber(value);
+    // Use Object.create for faster object creation
+    const converted = Object.create(Object.getPrototypeOf(obj));
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      converted[key] = convertBigIntToNumber(obj[key]);
     }
     return converted;
   }
@@ -403,33 +411,36 @@ class AssetService {
       prisma.asset.count({ where })
     ]);
 
-    // Segunda consulta: buscar ratings de todos os assets de uma vez (otimização)
-    const assetIds = assets.map(asset => asset.id);
+    // Segunda consulta: buscar ratings APENAS se houver assets (otimização)
+    let reviewsMap = new Map();
     
-    const reviewsData = await prisma.assetReview.groupBy({
-      by: ['assetId'],
-      where: {
-        assetId: { in: assetIds },
-        isApproved: true
-      },
-      _avg: {
-        rating: true
-      },
-      _count: {
-        rating: true
-      }
-    });
-
-    // Criar um mapa para acesso rápido aos dados de review
-    const reviewsMap = new Map();
-    reviewsData.forEach(review => {
-      reviewsMap.set(review.assetId, {
-        averageRating: Number((review._avg.rating || 0).toFixed(2)),
-        reviewCount: review._count.rating
+    if (assets.length > 0) {
+      const assetIds = assets.map(asset => asset.id);
+      
+      const reviewsData = await prisma.assetReview.groupBy({
+        by: ['assetId'],
+        where: {
+          assetId: { in: assetIds },
+          isApproved: true
+        },
+        _avg: {
+          rating: true
+        },
+        _count: {
+          rating: true
+        }
       });
-    });
 
-    // Combinar dados dos assets com reviews
+      // Criar um mapa para acesso rápido aos dados de review
+      reviewsData.forEach(review => {
+        reviewsMap.set(review.assetId, {
+          averageRating: Number((review._avg.rating || 0).toFixed(2)),
+          reviewCount: review._count.rating
+        });
+      });
+    }
+
+    // Combinar dados dos assets com reviews (BATCH PROCESSING)
     const assetsWithRating = assets.map(asset => {
       // Normalize tags
       const tags = normalizeTags(asset.tags);
